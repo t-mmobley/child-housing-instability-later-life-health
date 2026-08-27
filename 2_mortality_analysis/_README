@@ -1,0 +1,38 @@
+The folder contains code for the childhood housing instability and mid- and late-life mortality analysis in HRS. The sample imported in script 01 is derived from the 
+code in the 1_construction folder.
+
+Contents:
+
+0a_libraries.R
+- This code loads necessary R packages and is sourced in many of the following files.
+
+0d_KM_functions_clean.R
+- This code contains R functions for the analysis and are sourced in multiple scripts.
+- KM R functions run bootstrapped weights and weighted Kaplan-Meier curves for all samples of interest and obtain 2.5th and 97.5th percentiles for 5-year 
+  contrasts of interest on the multiplicative and additive scales. 
+- Cumulative incidence plots from weighted KM curves run in the results_clean.Rmd file 
+
+01_analytic_sample v4.R
+- This code further restricts the sample to exclude participants who entered the study in 2022 (the last study wave). 
+- Additionally, this code creates survival variables, further cleans variables of interest, and makes the dataset wide for analysis.
+
+02_imputations.R
+- This code runs hot-deck imputations.
+
+03_iptws v2_clean.R
+- This code constructs IPTWs in all of the stratified samples of interest.
+
+04_KM_analysis_time_clean.R
+- This script runs the main analysis, with time-on-study as the timescale using the KM bootrapping functions in 0d_KM_functions_clean.R
+
+05_KM_analysis_age_clean.R
+- This script runs the same KM analysis but with age as the timescale.
+
+06_KM_analysis_sens_clean.R
+- This script runs additional weighted KM anlayses, including redefining childhood financial insecurity and complete case. 
+
+07_estimate_formatting_clean.R
+- This script merges the results from scripts 4-6 and cleans the data for plotting, etc. in the next script. 
+
+results_clean.Rmd
+- This script creates all of the tables and figures for the main manuscript and supplement.
