@@ -1,0 +1,1484 @@
+---
+title: "Aim 1 results"
+author: "Taylor Mobley"
+date: "`r Sys.Date()`"
+output: 
+  word_document:
+    toc: true
+    toc_depth: 4
+  # powerpoint_presentation
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float: # toc_float option to float the table of contents to the left of the main document content. floating table of contents will always be visible even when the document is scrolled
+      collapsed: false # collapsed (defaults to TRUE) controls whether the TOC appears with only the top-level (e.g., H2) headers. If collapsed initially, the TOC is automatically expanded inline when necessary
+      smooth_scroll: true # smooth_scroll (defaults to TRUE) controls whether page scrolls are animated when TOC items are navigated to via mouse clicks
+    number_sections: false
+    fig_caption: true # ? this option doesn't seem to be working for figure inserted below outside of r code chunk    
+    highlight: default # Supported styles include "default", "tango", "pygments", "kate", "monochrome", "espresso", "zenburn", and "haddock" (specify null to prevent syntax    
+    theme: yeti # theme specifies the Bootstrap theme to use for the page. Valid themes include default, cerulean, journal, flatly, readable, spacelab, united, cosmo, lumen, paper, sandstone, simplex, and yeti.
+    df_print: tibble #options: default, tibble, paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+```{r load, include=FALSE}
+# clear everything
+rm(list = ls(all.names = TRUE))
+
+# Load
+library(here)
+library(survival)
+library(survminer)
+library(ggsurvfit)
+library(ggh4x)
+source(here("Aim_1/code/0a_libraries.R"))
+source(here("Aim_1/code/0d_KM_functions_clean.R"))
+```
+
+
+```{r , include=FALSE}
+# Aim 1 read -----
+dat_surv <- readRDS(here("Aim_1", "data", "processed", "dat_surv_wgts.rds"))
+KM_results_f <- readRDS(here("Aim_1", "data", "processed", "KM_results_f.rds"))
+```
+
+```{r formatting, include=FALSE}
+# Baseline health variables -----
+
+for(i in 1:length(dat_surv)){
+  dat_surv[[i]] <- dat_surv[[i]] %>%
+    # fair/poor health
+    mutate(shlt_bin = case_when(is.na(shlt) ~ NA,
+                                shlt %in% c(4,5) ~ 1,
+                                shlt %in% c(1,2,3) ~ 0),
+           # depressive sx
+           cesd_bin = case_when(is.na(cesd) ~ NA,
+                                cesd >= 4 ~ 1,
+                                cesd < 4 ~ 0), # 
+           adl6a_bin = case_when(is.na(adl6a) ~ NA,
+                                 adl6a >= 1 ~ 1,
+                                 adl6a == 0 ~ 0),
+           iadl5a_bin = case_when(is.na(iadl5a) ~ NA,
+                                 iadl5a >= 1 ~ 1,
+                                 iadl5a == 0 ~ 0),
+           heart = case_when(is.na(heart) ~ NA,
+                                  heart == 1 ~ 1,
+                                  heart == 0 ~ 0),
+           diab = case_when(is.na(diab) ~ NA,
+                            diab == 1 ~ 1,
+                            diab == 0 ~ 0),
+           hibp = case_when(is.na(hibp) ~ NA,
+                            hibp == 1 ~ 1,
+                            hibp == 0 ~ 0),
+           strok = case_when(is.na(strok) ~ NA,
+                             strok == 1 ~ 1,
+                             strok == 0 ~ 0)) 
+}
+
+# Label variable values ------
+
+for(i in 1:length(dat_surv)){
+  dat_surv[[i]] <- dat_surv[[i]] %>%
+    mutate(intx = interaction(age_start_median, child_forced_move, sep = " | ")) %>%
+    mutate(child_forced_move = case_when(child_forced_move==1 ~ "Childhood housing instability",
+                                         child_forced_move==0 ~ "No childhood housing instability")) %>%
+    mutate(raeduc = case_when(raeduc==1 ~ "Less than HS",
+                              raeduc==2 ~ "GED",
+                              raeduc==3 ~ "HS diploma",
+                              raeduc==4 ~ "Some college",
+                              raeduc==5 ~ "College and above"),
+           hhincome_pp = round(hhincome_pp/1000,1),
+           father_unemp = case_when(father_unemp==0 ~ "No",
+                                    father_unemp==1 ~ "Yes",
+                                    father_unemp==2 ~ "Never worked/always disabled",
+                                    father_unemp==3 ~ "Not present/not alive"),
+           raceth = case_when(raceth==1 ~ "Hispanic",
+                              raceth==2 ~ "Non-Hispanic (NH) Black",
+                              raceth==3 ~ "Another NH race",
+                              raceth==4 ~ "NH White"),
+           raceth = factor(raceth, levels = c("Hispanic", "Non-Hispanic (NH) Black",
+                                              "Another NH race", "NH White")),
+           knowndeceasedsource = case_when(knowndeceasedsource==1 ~ "Participant exit interview",
+                              knowndeceasedsource==2 ~ "Spouse/partner core interview",
+                              knowndeceasedsource==3 ~ "Field activity date",
+                              knowndeceasedsource==4 ~ "Imputed"),
+           ravetrn = as.numeric(ravetrn))
+}
+
+dat_surv_tbl <- dat_surv[["dat_surv"]]
+
+# Variables of interest -----
+
+reg.vars<-c("hhidpn", "age_start", "female", "raceth", 
+            "sbirth", "child_forced_move")
+
+covars <- c("firstiw", "hrswave_first", "rabyear", "rabcohort", 
+            "meduc_le8", "feduc_le8", "family_financ", "father_unemp", 
+            "first_father_military", "lh4e", "high_childhood_moves_v2", 
+            # "childhood_moves_v2", "child_res_instab", "child_res_instab_v2", "child_res_instab_v3",       
+            "ravetrn", "married_partnered", "raeduc", "hhincome_pp", 
+            "shlt_bin", "cesd_bin", "adl6a_bin", "iadl5a_bin", 
+            "heart", "diab", "hibp", "strok",
+            "lhms_year", "age_lhms", "age_start_median",
+            "age_end2", "time_surv2", "radage", "eos", "knowndeceasedsource")
+```
+
+\newpage 
+
+## Figure 1a. Aim 1 sample flow diagram  
+
+```{r, out.width = '100%'}
+knitr::include_graphics(here("sample flow diagram", "Slide1.png"))
+```
+
+\newpage
+
+# Table 1a. Descriptive statistics in Aim 1 analytic sample\n(n = `r nrow(dat_surv[["dat_surv"]])`)
+
+```{r, include=FALSE}
+# Number of people who changed their anwers!
+table(dat_surv_tbl$child_forced_move_count, dat_surv_tbl$child_forced_move_chg, exclude=NULL)
+table(dat_surv_tbl$family_financ_count, dat_surv_tbl$family_financ_chg, exclude=NULL)
+table(dat_surv_tbl$family_financ_count, dat_surv_tbl$poor_family_financ_chg, exclude=NULL)
+
+# Number of people with time_surv2 != time_surv
+t <- dat_surv[[1]] %>% filter(time_surv!= time_surv2)
+table(t$eos, exclude=NULL)
+t %>% nrow()
+```
+
+
+```{r t1, echo=FALSE}
+t1.vars <- append(reg.vars, c(covars))
+
+dat_tbl1 <- dat_surv_tbl %>%
+  select(c(any_of(t1.vars), -hhidpn, -hrswave)) 
+  
+
+labels <- list("firstiw" = "First HRS participation wave",
+               "hrswave_first" = "Baseline 1998+ study wave",
+               "rabcohort" = "Birth cohort",
+               "female" = "Female sex/gender",
+               "childhood_moves_v2" = "Childhood moves (ages 0-16)",
+               "high_childhood_moves_v2" = "High childhood residential mobility (>= 4 moves)",
+               "raeduc" = "Participant educational attainment",
+               "ravetrn" = "Participant veteran status",
+               "shlt_bin" = "First observed fair/poor self-rated health status",
+               "rabyear" = "Birth year",
+               "age_start" = "Baseline age (years)",
+               "age_end2" = "Age at end of follow-up (years)",
+               "time_surv2" = "Follow-up time (years)",
+               "age_lhms" = "Age at LHMS survey",
+               "lhms_year" = "LHMS year",
+               "raceth" = "Race and ethnicity",
+               "sbirth" = "US Southern birth",
+               "lh4e" = "Experienced homelessness before age 50",
+               # "child_res_instab" = "Moved in back-to-back years > once",
+               # "child_res_instab_v2" = "More than 1 move in back-to-back years",
+               # "child_res_instab_v3" = "Multiple moves in 5-year window",
+               "father_unemp" = "Father ever unemployed during childhood",
+               "first_father_military" = "Father military occupation when participant 16 YO",
+               "family_financ" = "Childhood financial well-being",
+               # "child_forced_move" = "Ever forced to move due to financial reasons during childhood",
+               "meduc_le8" = "Mother's education <= 8th grade or missing",
+               "feduc_le8" = "Father's education <= 8th grade or missing",
+               "married_partnered" = "Baseline married or partnered status",
+               "hhincome_pp" = "Baseline household size-adjusted income per person (1000s USD)",
+               "shlt_bin" = "Baseline self-reported fair/poor health",
+               "cesd_bin" = "Baseline depressive symptoms",
+               "adl6a_bin" = "Baseline self-reported >= 1 ADL",
+               "iadl5a_bin" = "Baseline self-reported >= 1 IADL",
+               "heart" = "Baseline self-reported heart problem",
+               "diab" = "Baseline self-reported diabetes",
+               "hibp" = "Baseline self-reported high blood pressure",
+               "strok" = "Baseline self-reported stroke",
+               "eos" = "End of study status",
+               "radage" = "Death age (years)",
+               "knowndeceasedsource" = "Source of death date"
+               )
+
+t1 <- dat_tbl1 %>%
+  tbl_summary(
+        by=child_forced_move,
+        label = c(labels),
+        missing = c("ifany"),
+        # statistic = list(all_continuous() ~ "{median} ({p25}-{p75})",
+        #                  all_categorical() ~ "{n} ({p})") 
+        statistic = list(all_continuous() ~ "{median} ({IQR})",
+                         all_categorical() ~ "{n} ({p})")
+  ) %>%
+  add_overall(last=TRUE)
+```
+
+\newpage
+
+# Table 1b. Descriptive characteristics by age at baseline and exposure
+
+```{r}
+t1 <- dat_tbl1 %>%
+  mutate(intx = interaction(child_forced_move, age_start_median, sep = " | ")) %>%
+  select(-c(child_forced_move, age_start_median)) %>%
+  tbl_summary(
+        by=intx,
+        label = c(labels),
+        missing = c("ifany"),
+        # statistic = list(all_continuous() ~ "{median} ({p25}-{p75})",
+        #                  all_categorical() ~ "{n} ({p})") 
+        statistic = list(all_continuous() ~ "{median} ({IQR})",
+                         all_categorical() ~ "{n} ({p})")
+  ) %>%
+  add_overall(last=TRUE)
+
+t1 %>%
+  as_flex_table(include = everything()) %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all")
+```
+
+\newpage
+
+```{r, fig.height=6, fig.width=10}
+library(flextable)
+tab <- dat_surv[["dat_surv"]] %>%
+  mutate(age_start = round(age_start,0),
+         age_end2 = round(age_end2,0)) %>%
+  rowwise() %>%
+  mutate(age = list(seq(age_start, age_end2, by = 1))) %>%
+  unnest(age) %>%
+  ungroup() %>%
+  mutate(age_bin = cut(age,
+                        breaks = c(50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, Inf),
+                        labels = c("50-55", "55-60", "60-65", "65-70", "70-75", "75-80", "80-85", "85-90", "90-95", "95-100", "100+"),
+                        right = FALSE)) %>%
+  distinct(hhidpn, age_bin, .keep_all = TRUE) %>%
+  select(hhidpn, age, age_bin, everything()) %>%
+  group_by(age_bin, child_forced_move) %>%
+  count() %>%
+  ungroup() %>%
+  group_by(age_bin) %>%
+  mutate(`Total (n)` = sum(n)) %>%
+  ungroup() %>%
+  pivot_wider(names_from = "child_forced_move",
+              values_from = c(n)) %>%
+  mutate(`Childhood housing instability (%)` = round(.[[3]]/.[[2]]*100,0))
+
+plot <- tab %>% 
+    ggplot(aes(x=age_bin, y=`Total (n)`)) +
+    geom_point(size = 0.7) +
+    geom_line(group=1) +
+    labs(
+      color = NULL,
+      y = "Number of Participants (n)",
+      x = "Age (years)") +
+    theme_bw() +
+    # scale_y_continuous(breaks = seq(0, 22000, by = 2000)) +
+    theme(legend.position = "bottom") 
+
+plot2 <- tab %>% 
+    ggplot(aes(x=age_bin, y=`Childhood housing instability (%)`)) +
+    geom_point(size = 0.7) +
+    geom_line(group=1) +
+    labs(
+      color = NULL,
+      y = "Childhood housing instability (%)",
+      x = "Age (years)") +
+    theme_bw() +
+    scale_y_continuous(breaks = seq(10, 20, by = 2), limits = c(10,20)) +
+    theme(legend.position = "bottom") 
+
+ggarrange(plot, plot2, ncol=1)
+```
+
+
+# Aim 1
+
+## Descriptive results
+
+### Figure 2. Baseline age (years) density and box plots stratified by Childhood housing instability status in the analytic sample\n(n = `r nrow(dat_tbl1)`)
+
+```{r}
+ggplot(dat_tbl1, aes(x = age_start)) +
+
+  # Density plot
+  geom_density(fill = "skyblue", alpha = 0.6) +
+
+  # Boxplot below x-axis
+  geom_boxplot(aes(y = -0.04),
+               width = 0.05,
+               alpha = 0.5,
+               fill = "gray70",
+               color = "black",
+               outlier.shape = NA) +
+  # Facet by the grouping variable
+  facet_wrap(~child_forced_move, ncol = 1, scales = "free_y") +
+  # Make space for boxplots below
+  scale_y_continuous(limits = c(-.08, 0.12),
+                     breaks = seq(0, 0.1, by=.05),
+                     name = "Density") +
+  scale_x_continuous(limits = c(50, 110),
+                     breaks = seq(50, 110, by=5)) +
+  labs(x = "Baseline age (years)") +
+  theme_bw() +
+  theme(
+    axis.text.y = element_text(size = 10),
+    axis.text.x = element_text(size = 10),
+    axis.title.x = element_text(size = 10),
+    axis.title.y = element_text(size = 10),
+    strip.text.x = element_text(size = 10),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 10),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor.y = element_blank()
+  )
+```
+
+### Table xx. Missingness
+
+```{r}
+dat_list <- readRDS(here("Aim_1", "data", "processed", "dat_surv.rds"))
+
+vars <- c("rabcohort", "female", "raceth", "sbirth", "child_forced_move", 
+          "family_financ", "rameduc", "rafeduc")
+
+preimp <- dat_list %>% select(any_of(c(vars)))
+
+t1 <- preimp %>%
+  tbl_summary(
+        label = c(labels,
+                  "child_forced_move" ~ "Childhood housing instability"),
+        missing = c("ifany"),
+        # statistic = list(all_continuous() ~ "{median} ({p25}-{p75})",
+        #                  all_categorical() ~ "{n} ({p})") 
+        statistic = list(all_continuous() ~ "{mean} ({sd})",
+                         all_categorical() ~ "{n} ({p})")
+  ) 
+
+t1 %>%
+  as_flex_table(include = everything()) %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+### Table eos 
+
+```{r}
+t1 <- dat_tbl1 %>%
+  tbl_summary(
+        by=eos,
+        label = c(labels,
+                  "child_forced_move" ~ "Childhood housing instability"),
+        missing = c("ifany"),
+        # statistic = list(all_continuous() ~ "{median} ({p25}-{p75})",
+        #                  all_categorical() ~ "{n} ({p})") 
+        statistic = list(all_continuous() ~ "{median} ({IQR})",
+                         all_categorical() ~ "{n} ({p})")
+  ) %>%
+  add_overall(last=TRUE)
+
+t1 %>%
+  as_flex_table(include = everything()) %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+\newpage
+
+### Covariate balance plots
+
+```{r covbal, echo=FALSE, fig.width=12, fig.height=12}
+library(cobalt)
+library(patchwork)
+
+set.cobalt.options(binary = "std",
+                   continuous = "std")
+
+new_list <- dat_surv[4:9]
+
+new_list <- new_list[c(1,4,2,5,3,6)] 
+
+names(new_list)
+names(new_list) <- c(
+  # "Overall",
+  # "Childhood financial insecurity",
+  # "No childhood financial insecurity",
+  "Overall, baseline age 50-60 years",
+  "Overall, baseline age >60 years",
+  "Childhood financial insecurity,\nbaseline age 50-60 years",
+  "Childhood financial insecurity,\nbaseline age >60 years",
+  "No childhood financial insecurity,\nbaseline age 50-60 years",
+  "No childhood financial insecurity,\nbaseline age >60 years"
+)
+
+plot_list <- lapply(names(new_list), function(nm) {
+  
+  dat <- new_list[[nm]]
+  
+  bal <- bal.tab(
+    child_forced_move ~ 
+      female + raceth + feduc_le8 + 
+      meduc_le8 + sbirth + age_start + factor(rabcohort),
+    data = dat,
+    weights = dat$all_agebl_iptw,
+    method = "weighting",
+    un = TRUE,
+    s.d.denom = "pooled"
+  )
+  
+  love.plot(
+    bal,
+    stats = "mean.diffs",
+    abs = TRUE,
+    threshold = 0.1,
+    var.order="unadjusted",
+    sample.names = c("Original", "Weighted"),
+    var.names = c(
+      feduc_le8 = "Low paternal education",
+      meduc_le8 = "Low maternal education",
+      raceth_Hispanic = "Race and ethnicity - Hispanic",
+      `raceth_Non-Hispanic (NH) Black` = "Race and ethnicity - NH Black",
+      `raceth_NH White` = "Race and ethnicity - NH White",
+      `raceth_Another NH race` = "Race and ethnicity - Another NH race",
+      `raceth:<NA>` = "Race and ethnicity - Unknown NH race",
+      `age_start` = "Baseline age",
+      `sbirth` = "US Southern birth",
+      `female` = "Female sex/gender",
+      `factor(rabcohort)_Born 1892-1927` = "Birth year category - born before 1927",
+      `factor(rabcohort)_Born 1928-1945` = "Birth year category - 1928-1945",
+      `factor(rabcohort)_Born 1965-1973` = "Birth year category - 1965-1973",
+      `factor(rabcohort)_Born 1946-1964` = "Birth year category - 1946-1964"
+    ),
+    title = paste(nm)
+  ) +
+   scale_x_continuous(limits = c(0, 0.35), breaks = seq(0, 0.35, 0.05))
+})
+
+names(plot_list) <- names(new_list)
+
+wrap_plots(plot_list, ncol=2) + plot_layout(guides = "collect") 
+```
+
+\newpage
+
+## Main analysis - Time on study as the timescale
+
+#### Baseline age-stratified 
+
+##### Figure xx. KM curves
+
+```{r, fig.width=24, fig.height=6}
+model0 <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_5060"]], weights = all_agebl_iptw) 
+p0 <- timeplot_cif(model0, paste0("Overall, baseline age 50-60 years\n(n = ", nrow(dat_surv[["dat_surv_5060"]]),")"))
+
+model1 <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_over60"]], weights = all_agebl_iptw) 
+p1 <- timeplot_cif(model1, paste0("Overall, baseline age >60 years\n(n = ", nrow(dat_surv[["dat_surv_over60"]]),")"))
+
+model2 <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_insec_5060"]], weights = all_agebl_iptw) 
+p2 <- timeplot_cif(model2, paste0("Childhood financial insecurity, baseline age 50-60 years\n(n = ", nrow(dat_surv[["dat_surv_insec_5060"]]),")"))
+
+model3 <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_insec_over60"]], weights = all_agebl_iptw) 
+p3 <- timeplot_cif(model3, paste0("Childhood financial insecurity, baseline age >60 years\n(n = ", nrow(dat_surv[["dat_surv_insec_over60"]]),")"))
+
+model4 <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_sec_5060"]], weights = all_agebl_iptw) 
+p4 <- timeplot_cif(model4, paste0("No childhood financial insecurity, baseline age 50-60 years\n(n = ", nrow(dat_surv[["dat_surv_sec_5060"]]),")"))
+
+model5 <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_sec_over60"]], weights = all_agebl_iptw) 
+p5 <- timeplot_cif(model5, paste0("No childhood financial insecurity, baseline age >60 years\n(n = ", nrow(dat_surv[["dat_surv_sec_over60"]]),")"))
+
+annotate_figure(
+  ggarrange(p0, p1, ncol=2, nrow=1, common.legend=TRUE, legend = "bottom"),
+  bottom = text_grob(
+    "Note: fully adjusted weights include sex/gender, race and ethnicity, birth cohort, US Southern birth, and parental education.",
+    hjust = 0, x = 0,  # left align
+    size = 10,
+    face = "italic"
+  )
+)
+```
+
+```{r, fig.width=24, fig.height=10}
+annotate_figure(
+  ggarrange(p2, p3, p4, p5, ncol=2, nrow=2, common.legend=TRUE, legend = "top"),
+  bottom = text_grob(
+    "Note: fully adjusted weights include sex/gender, race and ethnicity, birth cohort, US Southern birth, and parental education.",
+    hjust = 0, x = 0,  # left align
+    size = 10,
+    face = "italic"
+  )
+)
+```
+
+###### 25-year cumulative mortality 
+
+```{r}
+fits <- list(
+  model0 = model0,
+  model1 = model1,
+  model2 = model2,
+  model3 = model3,
+  model4 = model4,
+  model5 = model5
+)
+
+combined <- do.call(rbind,
+  lapply(names(fits), function(m) {
+    s <- summary(fits[[m]], times = c(5, 10, 15, 20, 25))
+    
+    data.frame(
+      model = m,
+      time = s$time,
+      exp = s$strata,
+      cuminc = 1 - s$surv,
+      lower = 1 - s$upper,
+      upper = 1 - s$lower
+    )
+  })
+) %>%
+  mutate(model = case_when(model=="model0" ~ "Overall, baseline age 50-60 years",
+                           model=="model1" ~ "Overall, baseline age >60 years",
+                           model=="model2" ~ "Childhood financial insecurity, baseline age 50-60 years",
+                           model=="model3" ~ "Childhood financial insecurity, baseline age >60 years",
+                           model=="model4" ~ "No childhood financial insecurity, baseline age 50-60 years",
+                           model=="model5" ~ "No childhood financial insecurity, baseline age >60 years"))
+
+combined %>%
+  filter(time==25) %>%
+  flextable() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all")
+```
+
+
+```{r}
+t <- KM_results_f %>% filter(str_detect(sample_f, "60") & 
+                        !str_detect(sample_f, "v2") &
+                        !str_detect(sample_f, "case") &
+                        weight_f == "Fully adjusted weights" &
+                        endtime==2 &
+                        age %in% c(5,10,15,20,25)) %>%
+  select(c(sample_f, age, starts_with("estimate_0"), starts_with("estimate_1"))) 
+
+t %>%
+  filter(age==25) %>%
+  flextable() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all")
+```
+
+
+```{r}
+KM_results_f %>% filter(str_detect(sample_f, "60") & 
+                        !str_detect(sample_f, "v2") &
+                        !str_detect(sample_f, "case") &
+                        weight_f == "Fully adjusted weights" &
+                        endtime==2 &
+                        age %in% c(5,10,15,20,25)) %>%
+  select(c(sample_f, age, risk_ratio, starts_with("rr"), risk_difference,
+           starts_with("rd"))) %>%
+  flextable() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all")
+```
+
+\newpage
+
+##### Figure xx. RRs and RDs
+
+```{r, fig.height=4, fig.width=20}
+ymin = .6
+ymax = 1.6
+  
+p1 <- KM_results_f %>%
+  filter(sample %in% c("dat_surv_5060", "dat_surv_insec_5060", "dat_surv_sec_5060",
+                       "dat_surv_over60", "dat_surv_insec_over60", "dat_surv_sec_over60")) %>%
+  # Filter contrasts of interest
+  filter(timescale=="times" & endtime==2 & weight == "all_agebl_iptw" & 
+           str_detect(sample_f, "Overall") & age %% 5 == 0) %>%
+  ggplot(aes(x=age, y=risk_ratio)) +
+  geom_point(size=2.5, color=c("#51A687")) + theme_bw() +
+  geom_errorbar(
+    aes(
+      ymin = pmax(rr_LL, ymin),
+      ymax = pmin(rr_UL, ymax)
+    ),
+    width=.2,
+    linewidth=1.3,
+    color="#51A687",
+    position=position_dodge(0.05)
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rr_UL > ymax),
+    aes(x=age, xend=age,
+        yend=ymax, y=ymax-0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rr_LL < ymin),
+    aes(x=age, xend=age,
+        yend=ymin, y=ymin+0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  scale_x_continuous(limits = c(5,25), breaks=seq(5,25,5)) +
+  scale_y_continuous(breaks=seq(0.6,1.6,.2)) +
+  coord_cartesian(ylim = c(0.6, 1.6)) +
+  xlab("Time on study (years)") +
+  ylab("RR (95% CI)") +
+  facet_wrap(~ sample_f, ncol=2) +
+  theme(axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title.x = element_text(size=20),
+        strip.text.x = element_text(size = 20)) +
+  geom_hline(yintercept=1, linetype='dashed', col = 'black')
+
+p1
+# ggarrange(p1, p2, ncol=1)
+```
+
+```{r, fig.height=7, fig.width=20}
+p2 <- KM_results_f %>%
+  filter(sample %in% c("dat_surv_5060", "dat_surv_insec_5060", "dat_surv_sec_5060",
+                       "dat_surv_over60", "dat_surv_insec_over60", "dat_surv_sec_over60")) %>%
+  # Filter contrasts of interest
+  filter(timescale=="times" & endtime==2 & weight == "all_agebl_iptw" & 
+           !str_detect(sample_f, "Overall") & age %% 5 == 0) %>%
+  ggplot(aes(x=age, y=risk_ratio)) +
+  geom_point(size=2.5, color=c("#51A687")) + theme_bw() +
+  geom_errorbar(
+    aes(
+      ymin = pmax(rr_LL, ymin),
+      ymax = pmin(rr_UL, ymax)
+    ),
+    width=.2,
+    linewidth=1.3,
+    color="#51A687",
+    position=position_dodge(0.05)
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rr_UL > ymax),
+    aes(x=age, xend=age,
+        yend=ymax, y=ymax-0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rr_LL < ymin),
+    aes(x=age, xend=age,
+        yend=ymin, y=ymin+0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  scale_x_continuous(limits = c(5,25), breaks=seq(5,25,5)) +
+  scale_y_continuous(breaks=seq(0.6,1.6,.2)) +
+  coord_cartesian(ylim = c(0.6, 1.6)) +
+  xlab("Time on study (years)") +
+  ylab("RR (95% CI)") +
+  facet_wrap(~ sample_f, ncol=2) +
+  theme(axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title.x = element_text(size=20),
+        strip.text.x = element_text(size = 20)) +
+  geom_hline(yintercept=1, linetype='dashed', col = 'black')
+
+p2
+```
+
+
+```{r, fig.height=4, fig.width=20}
+ymin <- -5
+ymax <- 13
+
+p2 <- KM_results_f %>%
+  filter(sample %in% c("dat_surv_5060", "dat_surv_insec_5060", "dat_surv_sec_5060",
+                       "dat_surv_over60", "dat_surv_insec_over60", "dat_surv_sec_over60")) %>%
+  # Filter contrasts of interest
+  filter(timescale=="times" & endtime==2 & weight == "all_agebl_iptw" & 
+           str_detect(sample_f, "Overall") & age %in% c(5,10,15,20,25)) %>%
+  ggplot(aes(x=age, y=risk_difference)) +
+  geom_point(size=2.5, color=c("#51A687")) + theme_bw() +
+  geom_errorbar(
+    aes(
+      ymin = pmax(rd_LL, ymin),
+      ymax = pmin(rd_UL, ymax)
+    ),
+    width=.2,
+    linewidth=1.3,
+    color="#51A687",
+    position=position_dodge(0.05)
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rd_UL > ymax),
+    aes(x=age, xend=age,
+        yend=ymax, y=ymax-0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rd_LL < ymin),
+    aes(x=age, xend=age,
+        yend=ymin, y=ymin+0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  scale_x_continuous(limits = c(5,25), breaks=seq(5,25,5)) +
+  scale_y_continuous(breaks=seq(-4,12,4)) +
+  coord_cartesian(ylim = c(-4.2, 13)) +
+  xlab("Time on study (years)") +
+  ylab("RD (95% CI)") +
+  facet_wrap(~ sample_f, ncol=2) +
+  theme(axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title.x = element_text(size=20),
+        strip.text.x = element_text(size = 20)) +
+  geom_hline(yintercept=0, linetype='dashed', col = 'black')
+p2
+```
+
+
+```{r, fig.height=9, fig.width=20}
+p2 <- KM_results_f %>%
+  filter(sample %in% c("dat_surv_5060", "dat_surv_insec_5060", "dat_surv_sec_5060",
+                       "dat_surv_over60", "dat_surv_insec_over60", "dat_surv_sec_over60")) %>%
+  # Filter contrasts of interest
+  filter(timescale=="times" & endtime==2 & 
+           weight == "all_agebl_iptw" & !str_detect(sample_f, "Overall") &
+           age %in% c(5,10,15,20,25)) %>%
+  ggplot(aes(x=age, y=risk_difference)) +
+  geom_point(size=2.5, color=c("#51A687")) + theme_bw() +
+  geom_errorbar(
+    aes(
+      ymin = pmax(rd_LL, ymin),
+      ymax = pmin(rd_UL, ymax)
+    ),
+    width=.2,
+    linewidth=1.3,
+    color="#51A687",
+    position=position_dodge(0.05)
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rd_UL > ymax),
+    aes(x=age, xend=age,
+        yend=ymax, y=ymax-0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rd_LL < ymin),
+    aes(x=age, xend=age,
+        yend=ymin, y=ymin+0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  scale_x_continuous(limits = c(5,25), breaks=seq(5,25,5)) +
+  scale_y_continuous(breaks=seq(-4,12,4)) +
+  coord_cartesian(ylim = c(-4.2, 13)) +
+  xlab("Time on study (years)") +
+  ylab("RD (95% CI)") +
+  facet_wrap(~ sample_f, ncol=2) +
+  theme(axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title.x = element_text(size=20),
+        strip.text.x = element_text(size = 20)) +
+  geom_hline(yintercept=0, linetype='dashed', col = 'black')
+p2
+```
+
+\newpage
+
+#### N risk, n event table
+
+```{r, fig.width=12, fig.height=10}
+tab <- KM_results_f %>%
+  filter(endtime==2 & str_detect(sample_f, "60")) %>%
+  filter(endtime==2 & sample %in% c("dat_surv_5060", "dat_surv_insec_5060", "dat_surv_sec_5060",
+                                    "dat_surv_over60", "dat_surv_insec_over60", "dat_surv_sec_over60")) %>%
+  # Filter contrasts of interest
+  filter(timescale == "times" & weight=="all_agebl_iptw" &
+           age %in% c(5,10,15,20,25)) %>%
+  select(c(sample_f, age, nrisk_0, nrisk_1, cumevents_5yr_0,
+         cumevents_5yr_1)) %>%
+  mutate(across(as.numeric(), ~ round(.x, 0))) %>%
+  ungroup() %>%
+  arrange(sample_f, age) 
+```
+
+```{r}
+tab %>%
+  flextable() %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+
+### Association table
+
+```{r}
+tab <- KM_results_f %>%
+  filter(endtime==2) %>%
+  filter(endtime==2 & sample %in% c("dat_surv", "dat_surv_insec", "dat_surv_sec",
+                                    "dat_surv_5060", "dat_surv_insec_5060", "dat_surv_sec_5060",
+                                    "dat_surv_over60", "dat_surv_insec_over60", "dat_surv_sec_over60")) %>%
+  # Filter contrasts of interest
+  filter(timescale == "times" & weight=="all_agebl_iptw" & age %% 5 == 0) %>%
+  mutate(across(c(starts_with("rr_"), risk_ratio), ~ round(.x, 2))) %>%
+  mutate(across(c(starts_with("rd_"), risk_difference), ~ round(.x, 2))) %>%
+  mutate(rr_clean = paste0(risk_ratio, " (", rr_LL, ", ", rr_UL, ")"),
+         rd_clean = paste0(risk_difference, " (", rd_LL, ", ", rd_UL, ")")) %>%
+  select(c(sample_f, age, rr_clean, rd_clean)) %>%
+  pivot_longer(cols = ends_with("clean"),
+               names_to = " ",
+               values_to = "estimate") %>%
+  ungroup() %>%
+  arrange(sample_f, age) 
+
+tab2 <- tab %>%
+  pivot_wider(names_from = age,
+                            values_from = estimate) %>%
+  mutate(" " = case_when(` ` == "rr_clean" ~ "RR (95% CI)",
+                         ` ` == "rd_clean" ~ "RD (95% CI)")) %>%
+  select(c(" ", everything())) %>%
+  arrange(desc(` `))
+```
+
+```{r}
+tab2 %>%
+  flextable() %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+<!-- \newpage  -->
+
+<!-- ### Not baseline-age stratified -->
+
+<!-- #####  Figure xx.  Childhood housing instability and mortality unweighted and weighted KM curves with time on study as the timescale -->
+
+<!-- ```{r, fig.width=14, fig.height=4} -->
+<!-- model <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move, -->
+<!--         data=dat_surv[["dat_surv"]], weights = all_agebl_iptw)  -->
+<!-- p0 <- timeplot_cif(model, paste0("Overall\n(n = ", nrow(dat_surv[["dat_surv"]]),")")) -->
+
+<!-- model <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move, -->
+<!--         data=dat_surv[["dat_surv_insec"]], weights = all_agebl_iptw)  -->
+<!-- p1 <- timeplot_cif(model, paste0("Childhood financial insecurity\n(n = ", nrow(dat_surv[["dat_surv_insec"]]),")")) -->
+
+<!-- model <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move, -->
+<!--         data=dat_surv[["dat_surv_sec"]], weights = all_agebl_iptw)  -->
+<!-- p2 <- timeplot_cif(model, paste0("No childhood financial insecurity\n(n = ", nrow(dat_surv[["dat_surv_sec"]]),")")) -->
+
+<!-- annotate_figure( -->
+<!--   ggarrange(p0, p1, p2, ncol=3, common.legend=TRUE, legend = "bottom"), -->
+<!--   bottom = text_grob( -->
+<!--     "Note: fully adjusted weights include sex/gender, race and ethnicity, birth cohort, US Southern birth, and parental education.", -->
+<!--     hjust = 0, x = 0,  # left align -->
+<!--     size = 10, -->
+<!--     face = "italic" -->
+<!--   ) -->
+<!-- ) -->
+<!-- ``` -->
+
+<!-- ##### Figure xx. Childhood housing instability time-specific mortality risk ratios and differences (95% CIs) from unweighted and weighted KM curves -->
+
+<!-- ```{r, fig.height=8, fig.width=20} -->
+<!-- p1 <- KM_results_f %>% -->
+<!--   filter(endtime==2 & sample %in% c("dat_surv", "dat_surv_insec", "dat_surv_sec")) %>% -->
+<!--   # Filter contrasts of interest -->
+<!--   filter(timescale=="times" & weight == "all_agebl_iptw") %>% -->
+<!--   ggplot(aes(x=age, y=risk_ratio)) + -->
+<!--   geom_point(size=2.5, color=c("#51A687")) + theme_bw() + -->
+<!--   geom_errorbar(aes(ymin=rr_UL, ymax=rr_LL), -->
+<!--                 width=.2, linewidth=1.3, color=c("#51A687"), -->
+<!--                 position=position_dodge(0.05)) + -->
+<!--   scale_x_continuous(limits = c(5,25), breaks=seq(5,25,5)) + -->
+<!--   scale_y_continuous(breaks=seq(.9,1.5,.1)) + -->
+<!--   coord_cartesian(ylim = c(0.86, 1.5)) + -->
+<!--   xlab("Time on study (years)") + -->
+<!--   ylab("RR (95% CI)") + -->
+<!--   facet_wrap(~ sample_f) + -->
+<!--   theme(axis.title.y = element_text(size=20), -->
+<!--         axis.text.x = element_text(size=20), -->
+<!--         axis.text.y = element_text(size=20), -->
+<!--         axis.title.x = element_text(size=20), -->
+<!--         strip.text.x = element_text(size = 20)) + -->
+<!--   geom_hline(yintercept=1, linetype='dashed', col = 'black') -->
+
+<!-- p2 <- KM_results_f %>% -->
+<!--   filter(endtime==2 & sample %in% c("dat_surv", "dat_surv_insec", "dat_surv_sec")) %>% -->
+<!--   # Filter contrasts of interest -->
+<!--   filter(timescale=="times" & weight == "all_agebl_iptw") %>% -->
+<!--   ggplot(aes(x=age, y=risk_difference)) + -->
+<!--   geom_point(size=2.5, color=c("#51A687")) + theme_bw() + -->
+<!--   geom_errorbar(aes(ymin=rd_UL, ymax=rd_LL), -->
+<!--                 width=.2, linewidth=1.3, color=c("#51A687"), -->
+<!--                 position=position_dodge(0.05)) + -->
+<!--   scale_x_continuous(limits = c(5,25), breaks=seq(5,25,5)) + -->
+<!--   scale_y_continuous(breaks=seq(-2,9,2)) + -->
+<!--   coord_cartesian(ylim = c(-3, 9)) + -->
+<!--   xlab("Time on study (years)") + -->
+<!--   ylab("RD (95% CI)") + -->
+<!--   facet_wrap(~ sample_f) + -->
+<!--   theme(axis.title.y = element_text(size=20), -->
+<!--         axis.text.x = element_text(size=20), -->
+<!--         axis.text.y = element_text(size=20), -->
+<!--         axis.title.x = element_text(size=20), -->
+<!--         strip.text.x = element_text(size = 20)) + -->
+<!--   geom_hline(yintercept=0, linetype='dashed', col = 'black') -->
+
+<!-- ggarrange(p1, p2, ncol=1) -->
+<!-- ``` -->
+
+\newpage
+
+## Sensitivity analyses - Age as the timescale 
+
+### Baseline age-stratified 
+
+#### Figure xx. Overall, childhood fianciial insecurity samples, fully-adjusted 
+
+```{r, fig.width=20, fig.height=6}
+model <- survfit(Surv(age_start, age_end2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_5060"]], weights = all_agebl_iptw) 
+p0 <- plot_cif(model, paste0("Overall, baseline age 50-60 years\n(n = ", nrow(dat_surv[["dat_surv_5060"]]),")"))
+
+model <- survfit(Surv(age_start, age_end2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_over60"]], weights = all_agebl_iptw) 
+p1 <- plot_cif(model, paste0("Overall, baseline age >60 years\n(n = ", nrow(dat_surv[["dat_surv_over60"]]),")"))
+
+model <- survfit(Surv(age_start, age_end2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_insec_5060"]], weights = all_agebl_iptw) 
+p2 <- plot_cif(model, paste0("Childhood financial insecurity, baseline age 50-60 years\n(n = ", nrow(dat_surv[["dat_surv_insec_5060"]]),")"))
+
+model <- survfit(Surv(age_start, age_end2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_insec_over60"]], weights = all_agebl_iptw) 
+p3 <- plot_cif(model, paste0("Childhood financial insecurity, baseline age >60 years\n(n = ", nrow(dat_surv[["dat_surv_insec_over60"]]),")"))
+
+model <- survfit(Surv(age_start, age_end2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_sec_5060"]], weights = all_agebl_iptw) 
+p4 <- plot_cif(model, paste0("No childhood financial insecurity, baseline age 50-60 years\n(n = ", nrow(dat_surv[["dat_surv_sec_5060"]]),")"))
+
+model <- survfit(Surv(age_start, age_end2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_sec_over60"]], weights = all_agebl_iptw) 
+p5 <- plot_cif(model, paste0("No childhood financial insecurity, baseline age >60 years\n(n = ", nrow(dat_surv[["dat_surv_sec_over60"]]),")"))
+
+annotate_figure(
+  ggarrange(p0, p1, ncol=2, nrow=1, common.legend=TRUE, legend = "bottom"),
+  bottom = text_grob(
+    "Note: fully adjusted weights include sex/gender, race and ethnicity, birth cohort, US Southern birth, and parental education.",
+    hjust = 0, x = 0,  # left align
+    size = 10,
+    face = "italic"
+  )
+)
+```
+
+```{r, fig.width=20, fig.height=12}
+annotate_figure(
+  ggarrange(p2, p3, p4, p5, ncol=2, nrow=2, common.legend=TRUE, legend = "bottom"),
+  bottom = text_grob(
+    "Note: fully adjusted weights include sex/gender, race and ethnicity, birth cohort, US Southern birth, and parental education.",
+    hjust = 0, x = 0,  # left align
+    size = 10,
+    face = "italic"
+  )
+)
+```
+
+
+#### Figure xx. RRs and RDs
+ 
+```{r, fig.height=10, fig.width=20}
+ymin = .35
+ymax = 3
+
+p1 <- KM_results_f %>%
+  filter(sample %in% c("dat_surv_5060", "dat_surv_insec_5060", "dat_surv_sec_5060",
+                       "dat_surv_over60", "dat_surv_insec_over60", "dat_surv_sec_over60")) %>%
+  # Full sample
+  filter(endtime==2 & weight=="all_iptw" & age %% 5 == 0) %>%
+  ggplot(aes(x=age, y=risk_ratio)) +
+  geom_point(size=2.5, color=c("#51A687")) + theme_bw() +
+  geom_errorbar(
+    aes(
+      ymin = pmax(rr_LL, ymin),
+      ymax = pmin(rr_UL, ymax)
+    ),
+    width=.2,
+    linewidth=1.3,
+    color="#51A687",
+    position=position_dodge(0.05)
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rr_UL > ymax),
+    aes(x=age, xend=age,
+        yend=ymax, y=ymax-0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rr_LL < ymin),
+    aes(x=age, xend=age,
+        yend=ymin, y=ymin+0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  scale_x_continuous(limits = c(55,90), breaks=seq(55,90,5)) +
+  scale_y_continuous(breaks=seq(0.5,3,.5)) +
+  coord_cartesian(ylim = c(0.35, 3)) +
+  xlab("Age (years)") +
+  ylab("RR (95% CI)") +
+  facet_wrap(~ sample_f, ncol=2) +
+  theme(axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title.x = element_text(size=20),
+        strip.text.x = element_text(size = 20)) +
+  geom_hline(yintercept=1, linetype='dashed', col = 'black')
+
+p1
+# ggarrange(p1, p2, ncol=1)
+```
+
+```{r, fig.height=10, fig.width=20}
+ymin = -6
+ymax = 9
+
+p2 <- KM_results_f %>%
+  filter(sample %in% c("dat_surv_5060", "dat_surv_insec_5060", "dat_surv_sec_5060",
+                       "dat_surv_over60", "dat_surv_insec_over60", "dat_surv_sec_over60")) %>%
+  # Full sample
+  filter(endtime==2 & weight=="all_iptw" & age %% 5 == 0) %>%
+  ggplot(aes(x=age, y=risk_difference)) +
+  geom_point(size=2.5, color=c("#51A687")) + theme_bw() +
+  geom_errorbar(
+    aes(
+      ymin = pmax(rd_LL, ymin),
+      ymax = pmin(rd_UL, ymax)
+    ),
+    width=.2,
+    linewidth=1.3,
+    color="#51A687",
+    position=position_dodge(0.05)
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rd_UL > ymax),
+    aes(x=age, xend=age,
+        yend=ymax, y=ymax-0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rd_LL < ymin),
+    aes(x=age, xend=age,
+        yend=ymin, y=ymin+0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  scale_x_continuous(limits = c(55,90), breaks=seq(55,90,5)) +
+  scale_y_continuous(breaks=seq(-6,9,3)) +
+  coord_cartesian(ylim = c(-6, 9)) +
+  xlab("Age (years)") +
+  ylab("RD (95% CI)") +
+  facet_wrap(~ sample_f, ncol=2) +
+  theme(axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title.x = element_text(size=20),
+        strip.text.x = element_text(size = 20)) +
+  geom_hline(yintercept=1, linetype='dashed', col = 'black')
+
+p2
+```
+
+\newpage
+
+### N risk, n event table
+
+```{r, fig.width=12, fig.height=10}
+tab <- KM_results_f %>%
+  filter(endtime==2 & str_detect(sample_f, "60")) %>%
+  filter(endtime==2 & sample %in% c("dat_surv_5060", "dat_surv_insec_5060", "dat_surv_sec_5060",
+                                    "dat_surv_over60", "dat_surv_insec_over60", "dat_surv_sec_over60")) %>%
+  # Filter contrasts of interest
+  filter(str_detect(timescale, "ages") & weight=="all_iptw" & age %% 5 == 0) %>%
+  select(c(sample_f, age, nrisk_0, nrisk_1, cumevents_5yr_0,
+         cumevents_5yr_1)) %>%
+  mutate(across(as.numeric(), ~ round(.x, 0))) %>%
+  ungroup() %>%
+  arrange(sample_f, age) 
+```
+
+```{r}
+tab %>%
+  flextable() %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+### Association table
+
+```{r}
+tab <- KM_results_f %>%
+  filter(endtime==2 & str_detect(sample, "60")) %>%
+  filter(endtime==2 & sample %in% c("dat_surv", "dat_surv_insec", "dat_surv_sec",
+                                    "dat_surv_5060", "dat_surv_insec_5060", "dat_surv_sec_5060",
+                                    "dat_surv_over60", "dat_surv_insec_over60", "dat_surv_sec_over60")) %>%
+  # Filter contrasts of interest
+  filter(weight=="all_iptw" & age %% 5 == 0) %>%
+  mutate(across(c(starts_with("rr_"), risk_ratio), ~ round(.x, 2))) %>%
+  mutate(across(c(starts_with("rd_"), risk_difference), ~ round(.x, 2))) %>%
+  mutate(rr_clean = paste0(risk_ratio, " (", rr_LL, ", ", rr_UL, ")"),
+         rd_clean = paste0(risk_difference, " (", rd_LL, ", ", rd_UL, ")")) %>%
+  select(c(sample_f, age, rr_clean, rd_clean)) %>%
+  pivot_longer(cols = ends_with("clean"),
+               names_to = " ",
+               values_to = "estimate") %>%
+  ungroup() %>%
+  arrange(sample_f, age) 
+
+tab2 <- tab %>%
+  pivot_wider(names_from = sample_f,
+                            values_from = estimate) %>%
+  mutate(" " = case_when(` ` == "rr_clean" ~ "RR (95% CI)",
+                         ` ` == "rd_clean" ~ "RD (95% CI)")) %>%
+  select(c(" ", everything())) %>%
+  arrange(desc(` `))
+
+tab2 %>%
+  flextable() %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+\newpage
+
+<!-- ### Not baseline-age stratified -->
+
+<!-- ### Fully-adjusted  -->
+
+<!-- #### Figure xx.  Overall and childhood financial insecurity stratified -->
+
+<!-- ```{r, fig.width=20, fig.height=5} -->
+<!-- model <- survfit(Surv(age_start, age_end2, death_flag) ~ child_forced_move, -->
+<!--         data=dat_surv[["dat_surv"]], weights = all_iptw)  -->
+<!-- p0 <- plot_cif(model, paste0("Overall\n(n = ", nrow(dat_surv[["dat_surv"]]),")")) -->
+
+<!-- model <- survfit(Surv(age_start, age_end2, death_flag) ~ child_forced_move, -->
+<!--         data=dat_surv[["dat_surv_insec"]], weights = all_iptw)  -->
+<!-- p1 <- plot_cif(model, paste0("Childhood financial insecurity\n(n = ", nrow(dat_surv[["dat_surv_insec"]]),")")) -->
+
+<!-- model <- survfit(Surv(age_start, age_end2, death_flag) ~ child_forced_move, -->
+<!--         data=dat_surv[["dat_surv_sec"]], weights = all_iptw)  -->
+<!-- p2 <- plot_cif(model, paste0("No childhood financial insecurity\n(n = ", nrow(dat_surv[["dat_surv_sec"]]),")")) -->
+
+<!-- annotate_figure( -->
+<!--   ggarrange(p0, p1, p2, ncol=3, common.legend=TRUE, legend = "bottom"), -->
+<!--   bottom = text_grob( -->
+<!--     "Note: fully adjusted weights include sex/gender, race and ethnicity, birth cohort, US Southern birth, and parental education.", -->
+<!--     hjust = 0, x = 0,  # left align -->
+<!--     size = 10, -->
+<!--     face = "italic" -->
+<!--   ) -->
+<!-- ) -->
+<!-- ``` -->
+
+<!-- #### Figure xx. Childhood housing instability age-specific mortality risk ratios and differences (95% CIs) from weighted KM curves. Analyses presented overall and stratified by childhood financial insecurity-status -->
+
+<!-- ```{r, fig.height=10, fig.width=20} -->
+<!-- ymin = .6 -->
+<!-- ymax = 2.9 -->
+
+<!-- p1 <- KM_results_f %>% -->
+<!--   filter(sample %in% c("dat_surv", "dat_surv_insec", "dat_surv_sec")) %>% -->
+<!--   # Full sample -->
+<!--   filter(endtime==2 & weight=="all_iptw") %>% -->
+<!--   # Filter contrasts of interest -->
+<!--   filter(timescale == "ages") %>% -->
+<!--   ggplot(aes(x=age, y=risk_ratio)) + -->
+<!--   geom_point(size=2.5, color=c("#51A687")) + theme_bw() + -->
+<!--   geom_errorbar( -->
+<!--     aes( -->
+<!--       ymin = pmax(rr_LL, ymin), -->
+<!--       ymax = pmin(rr_UL, ymax) -->
+<!--     ), -->
+<!--     width=.2, -->
+<!--     linewidth=1.3, -->
+<!--     color="#51A687", -->
+<!--     position=position_dodge(0.05) -->
+<!--   ) + -->
+<!--   geom_segment( -->
+<!--     data = ~ subset(.x, rr_UL > ymax), -->
+<!--     aes(x=age, xend=age, -->
+<!--         yend=ymax, y=ymax-0.6), -->
+<!--     arrow=arrow(length=unit(0.35,"cm"), type="closed"), -->
+<!--     color="#51A687" -->
+<!--   ) + -->
+<!--   geom_segment( -->
+<!--     data = ~ subset(.x, rr_LL < ymin), -->
+<!--     aes(x=age, xend=age, -->
+<!--         yend=ymin, y=ymin+0.6), -->
+<!--     arrow=arrow(length=unit(0.35,"cm"), type="closed"), -->
+<!--     color="#51A687" -->
+<!--   ) + -->
+<!--   scale_x_continuous(limits = c(55,95), breaks=seq(55,95,5)) + -->
+<!--   scale_y_continuous(breaks=seq(.6,2.8,.4)) + -->
+<!--   coord_cartesian(ylim = c(0.6, 2.9)) + -->
+<!--   xlab("Age (years)") + -->
+<!--   ylab("RR (95% CI)") + -->
+<!--   facet_wrap(~ sample_f) + -->
+<!--   theme(axis.title.y = element_text(size=20), -->
+<!--         axis.text.x = element_text(size=20), -->
+<!--         axis.text.y = element_text(size=20), -->
+<!--         axis.title.x = element_text(size=20), -->
+<!--         strip.text.x = element_text(size = 20)) + -->
+<!--   geom_hline(yintercept=1, linetype='dashed', col = 'black') -->
+
+<!-- p2 <- KM_results_f %>% -->
+<!--   filter(sample %in% c("dat_surv", "dat_surv_insec", "dat_surv_sec")) %>% -->
+<!--    # Full sample -->
+<!--   filter(endtime==2 & weight == "all_iptw") %>% -->
+<!--   # Filter contrasts of interest -->
+<!--   filter(timescale == "ages") %>% -->
+<!--   ggplot(aes(x=age, y=risk_difference)) + -->
+<!--   geom_point(size=2.5, color=c("#51A687")) + theme_bw() + -->
+<!--   geom_errorbar(aes(ymin=rd_UL, ymax=rd_LL), -->
+<!--                 width=.2, linewidth=1.3, color=c("#51A687"), -->
+<!--                 position=position_dodge(0.05)) + -->
+<!--   scale_x_continuous(limits = c(55,95), breaks=seq(55,95,5)) + -->
+<!--    scale_y_continuous(breaks=seq(-2,7,2)) + -->
+<!--   coord_cartesian(ylim = c(-3.5, 7)) + -->
+<!--   xlab("Age (years)") + -->
+<!--   facet_wrap(~ sample_f) +  -->
+<!--   ylab("RD (95% CI)") + -->
+<!--   theme(axis.title.y = element_text(size=20), -->
+<!--         axis.text.x = element_text(size=20), -->
+<!--         axis.text.y = element_text(size=20), -->
+<!--         axis.title.x = element_text(size=20), -->
+<!--         strip.text.x = element_text(size = 20)) + -->
+<!--   geom_hline(yintercept=0, linetype='dashed', col = 'black') -->
+
+<!-- ggarrange(p1, p2, ncol=1) -->
+<!-- ``` -->
+
+<!-- \newpage -->
+
+### Main analysis - Poor or varied childhood financial insecurity
+
+####  Figure xx.  Childhood housing instability and mortality stratified by poor/varied childhood financial well-being, time on study as the timescale
+
+```{r, fig.width=24, fig.height=10}
+model <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_insec2_5060"]], weights = all_agebl_iptw) 
+p2 <- timeplot_cif(model, paste0("Childhood financial insecurity (v2),\nbaseline age 50-60 years\n(n = ", nrow(dat_surv[["dat_surv_insec2_5060"]]),")"))
+
+model <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_insec2_over60"]], weights = all_agebl_iptw) 
+p3 <- timeplot_cif(model, paste0("Childhood financial insecurity (v2),\nbaseline age >60 years\n(n = ", nrow(dat_surv[["dat_surv_insec2_over60"]]),")"))
+
+model <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_sec2_5060"]], weights = all_agebl_iptw) 
+p4 <- timeplot_cif(model, paste0("No childhood financial insecurity (v2),\nbaseline age 50-60 years\n(n = ", nrow(dat_surv[["dat_surv_sec2_5060"]]),")"))
+
+model <- survfit(Surv(time_surv2, death_flag) ~ child_forced_move,
+        data=dat_surv[["dat_surv_sec2_over60"]], weights = all_agebl_iptw) 
+p5 <- timeplot_cif(model, paste0("No childhood financial insecurity (v2),\nbaseline age >60 years\n(n = ", nrow(dat_surv[["dat_surv_sec2_over60"]]),")"))
+
+annotate_figure(
+  ggarrange(p2, p3, p4, p5, ncol=2, nrow=2, common.legend=TRUE, legend = "bottom"),
+  bottom = text_grob(
+    "Note: fully adjusted weights include sex/gender, race and ethnicity, birth cohort, US Southern birth, and parental education.",
+    hjust = 0, x = 0,  # left align
+    size = 10,
+    face = "italic"
+  )
+)
+```
+
+#### Figure xx. RRs and RDs
+  
+```{r, fig.height=10, fig.width=20}
+p1 <- KM_results_f %>%
+  # Full sample
+  filter(sample %in% c("dat_surv_insec2_5060", "dat_surv_insec2_over60", 
+                       "dat_surv_sec2_5060",
+                       "dat_surv_sec2_over60") & endtime==2) %>%
+  mutate(sample_f = factor(sample_f,
+                         levels = c("Childhood financial insecurity (v2), baseline age 50-60 years\n(n = 5411)", 
+                       "Childhood financial insecurity (v2), baseline age >60 years\n(n = 5952)", 
+                      "No childhood financial insecurity (v2), baseline age 50-60 years\n(n = 13270)",
+                       "No childhood financial insecurity (v2), baseline age >60 years\n(n = 10772)"))) %>%
+  # Filter contrasts of interest
+  filter(timescale=="times" & endtime==2 & weight == "all_agebl_iptw" & 
+           age %% 5 == 0) %>%
+  ggplot(aes(x=age, y=risk_ratio)) +
+  geom_point(size=2.5, color=c("#51A687")) + theme_bw() +
+  geom_errorbar(aes(ymin=rr_UL, ymax=rr_LL),
+                width=.2, linewidth=1.3, color=c("#51A687"),
+                position=position_dodge(0.05)) +
+  scale_x_continuous(limits = c(5,25), breaks=seq(5,25,5)) +
+  scale_y_continuous(breaks=seq(0.8,1.8,.2)) +
+  coord_cartesian(ylim = c(0.8, 1.8)) +
+  xlab("Time on study (years)") +
+  ylab("RR (95% CI)") +
+  facet_wrap(~ sample_f, ncol=2) +
+  theme(axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title.x = element_text(size=20),
+        strip.text.x = element_text(size = 20)) +
+  geom_hline(yintercept=1, linetype='dashed', col = 'black')
+
+p1
+# ggarrange(p1, p2, ncol=1)
+```
+
+```{r, fig.height=10, fig.width=20}
+ymin = -6
+ymax = 10
+
+p2 <- KM_results_f %>%
+  # Full sample
+  filter(sample %in% c("dat_surv_insec2_5060", "dat_surv_sec2_5060",
+                       "dat_surv_insec2_over60", "dat_surv_sec2_over60") & endtime==2) %>%
+    mutate(sample_f = factor(sample_f,
+                         levels = c("Childhood financial insecurity (v2), baseline age 50-60 years\n(n = 5411)", 
+                       "Childhood financial insecurity (v2), baseline age >60 years\n(n = 5952)", 
+                      "No childhood financial insecurity (v2), baseline age 50-60 years\n(n = 13270)",
+                       "No childhood financial insecurity (v2), baseline age >60 years\n(n = 10772)"))) %>%
+  # arrange(sample_f) %>%
+  # Filter contrasts of interest
+  filter(timescale=="times" & weight=="all_agebl_iptw" & age %% 5 == 0) %>%
+  ggplot(aes(x=age, y=risk_difference)) +
+  geom_point(size=2.5, color=c("#51A687")) + theme_bw() +
+  geom_errorbar(
+    aes(
+      ymin = pmax(rd_LL, ymin),
+      ymax = pmin(rd_UL, ymax)
+    ),
+    width=.2,
+    linewidth=1.3,
+    color="#51A687",
+    position=position_dodge(0.05)
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rd_UL > ymax),
+    aes(x=age, xend=age,
+        yend=ymax, y=ymax-0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  geom_segment(
+    data = ~ subset(.x, rd_LL < ymin),
+    aes(x=age, xend=age,
+        yend=ymin, y=ymin+0.6),
+    arrow=arrow(length=unit(0.35,"cm"), type="closed"),
+    color="#51A687"
+  ) +
+  scale_x_continuous(limits = c(5,25), breaks=seq(5,25,5)) +
+  scale_y_continuous(breaks=seq(-6,12,3)) +
+  coord_cartesian(ylim = c(-6, 10)) +
+  xlab("Time on study (years)") +
+  ylab("RD (95% CI)") +
+  facet_wrap(~ sample_f) +
+  theme(axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title.x = element_text(size=20),
+        strip.text.x = element_text(size = 20)) + 
+  geom_hline(yintercept=0, linetype='dashed', col = 'black')
+p2
+```
+
+
+### Main analysis - complete case sample
+
+```{r, fig.height=8, fig.width=16}
+p1 <- KM_results_f %>%
+  # Full sample
+  filter(str_detect(sample, "_cc") & endtime==2 & weight=="all_agebl_iptw" & 
+           age %% 5 == 0) %>%
+  # Filter contrasts of interest
+  filter(timescale == "times" & !(str_detect(sample_f, "overall"))) %>%
+  ggplot(aes(x=age, y=risk_ratio)) +
+  geom_point(size=2.5, color=c("#56B4E9")) + theme_bw() +
+  geom_errorbar(aes(ymin=rr_UL, ymax=rr_LL),
+                width=.2, linewidth=1.3, color=c("#56B4E9"),
+                position=position_dodge(0.05)) +
+  scale_x_continuous(limits = c(4,26), breaks=seq(5,25,5)) +
+  scale_y_continuous(breaks=seq(0.9,1.5,.1)) +
+  coord_cartesian(ylim = c(0.9, 1.5)) +
+  facet_wrap(~ sample_f, nrow=1) +
+  xlab("Time (years)") +
+  ylab("RR (95% CI)") +
+  theme(axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title.x = element_text(size=20),
+        strip.text.x = element_text(size = 16)) +
+  geom_hline(yintercept=1, linetype='dashed', col = 'black')
+
+p2 <- KM_results_f %>%
+   # Full sample
+  filter(str_detect(sample, "_cc") & endtime==2 & weight=="all_agebl_iptw" &
+           age %% 5 == 0) %>%
+  # Filter contrasts of interest
+   filter(timescale == "times" & !(str_detect(sample_f, "overall"))) %>%
+  mutate(weight = factor(case_when(weight == "NULL" ~ "Unweighted",
+                            weight == "demo_iptw" ~ "Demographic weights",
+                            weight == "all_iptw" ~ "Fully adjusted weights"),
+                         levels = c("Unweighted",
+                                    "Demographic weights",
+                                    "Fully adjusted weights"))) %>%
+  ggplot(aes(x=age, y=risk_difference)) +
+  geom_point(size=2.5, color=c("#56B4E9")) + theme_bw() +
+  geom_errorbar(aes(ymin=rd_UL, ymax=rd_LL),
+                width=.2, linewidth=1.3, color=c("#56B4E9"),
+                position=position_dodge(0.05)) +
+  scale_x_continuous(limits = c(4,26), breaks=seq(5,25,5)) +
+   scale_y_continuous(breaks=seq(-2,9,2)) +
+  coord_cartesian(ylim = c(-2.1, 9)) +
+  xlab("Time (years)") +
+  facet_wrap(~ sample_f, nrow=1) +
+  ylab("RD (95% CI)") +
+  theme(axis.title.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
+        axis.text.y = element_text(size=20),
+        axis.title.x = element_text(size=20),
+        strip.text.x = element_text(size = 16)) +
+  geom_hline(yintercept=0, linetype='dashed', col = 'black')
+
+ggarrange(p1, p2, ncol=1)
+```
