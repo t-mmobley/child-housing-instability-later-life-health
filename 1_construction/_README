@@ -1,0 +1,22 @@
+The folder contains code that constructs the dataset used in the childhood housing instability and mid- and late-life mortality (folder 2_mortality_analysis) and 
+functional impairment (3_functional_impairment_analysis) analyses. The code here needs to be run before running code in folders 2 and 3.
+
+Contents:
+
+01_HRSFatFile_construction.R
+- This code imports select variables of interest from the 1998-2022 biennial HRS core waves. Then, the corw wave data is combined into one dataset and saved. 
+
+02_RAND_trkr_construction.R
+- This code imports the 2022 HRS Tracker and RAND longitudinal files, selects variables of interest, and merges the files.
+
+03_HRS_LHMS_construction.R
+- This code imports the data files from scripts 1 and 2, as well as the 2015-2019 Life History Mailed Survey data. The data are merged and saved.
+
+04_exposure_data_cleaning v4.R
+- This code cleans intial exposure variables and covariates of interest. 
+
+05_sample_restriction.R
+- This code implements inital sample restrictions used across analyses, including (1) study waves 1998+ and (2) ages 50+.
+
+06_data_cleaning v3.R
+- This code further cleans expsoure, covariate, and outcome measures in the dataset saved in script 05.
