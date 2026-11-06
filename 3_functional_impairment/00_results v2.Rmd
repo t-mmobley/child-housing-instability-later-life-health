@@ -1,0 +1,1217 @@
+---
+title: "Aim 2 results"
+author: "Taylor Mobley"
+date: "`r Sys.Date()`"
+output: 
+  word_document:
+    toc: true
+    toc_depth: 4
+  # powerpoint_presentation
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float: # toc_float option to float the table of contents to the left of the main document content. floating table of contents will always be visible even when the document is scrolled
+      collapsed: false # collapsed (defaults to TRUE) controls whether the TOC appears with only the top-level (e.g., H2) headers. If collapsed initially, the TOC is automatically expanded inline when necessary
+      smooth_scroll: true # smooth_scroll (defaults to TRUE) controls whether page scrolls are animated when TOC items are navigated to via mouse clicks
+    number_sections: false
+    fig_caption: true # ? this option doesn't seem to be working for figure inserted below outside of r code chunk    
+    highlight: default # Supported styles include "default", "tango", "pygments", "kate", "monochrome", "espresso", "zenburn", and "haddock" (specify null to prevent syntax    
+    theme: yeti # theme specifies the Bootstrap theme to use for the page. Valid themes include default, cerulean, journal, flatly, readable, spacelab, united, cosmo, lumen, paper, sandstone, simplex, and yeti.
+    df_print: tibble #options: default, tibble, paged
+---
+
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+library(ggplot2)
+library(tidyverse)
+library(magrittr)
+library(here)
+library(haven)
+library(ggpubr)
+library(gtsummary)
+library(scales)
+library(flextable)
+library(gdtools)
+library(bib2df)
+library(ggh4x)
+library(cobalt)
+library(patchwork)
+library(grid)
+library(cowplot)
+options(scipen=999)
+
+# source(here("Aim_2", "code", "0b_plot functions.R"))
+```
+
+```{r, include=FALSE}
+fnlim <- readRDS(here("Aim_2", "data", "processed", "dat_wgts.rds"))
+preds <- readRDS(here("Aim_2", "data", "processed", "preds_clean.rds"))
+contrasts <- readRDS(here("Aim_2", "data", "processed", "contrasts_clean.rds"))
+```
+
+\newpage
+
+## Tables and Figures
+
+### Sample flow diagram
+
+```{r, out.width = '100%'}
+knitr::include_graphics(here("sample flow diagram", "Slide2.png"))
+```
+
+\newpage 
+
+### Table 1. Descriptive statistics statified by any vs. No childhood housing instability
+
+```{r create table1s, echo=FALSE, message=FALSE}
+datbl_list <- list()
+
+for(i in 1:length(fnlim)){
+  fnlim[[i]] <- fnlim[[i]] %>%
+   mutate(child_forced_move = case_when(child_forced_move==1 ~ "Childhood housing instability",
+                                         child_forced_move==0 ~ "No childhood housing instability"),
+           # hhincome_pp = round(hhincome_pp/1000,1),
+           father_unemp = case_when(father_unemp==0 ~ "No",
+                                    father_unemp==1 ~ "Yes",
+                                    father_unemp==2 ~ "Never worked/always disabled",
+                                    father_unemp==3 ~ "Not present/not alive"),
+           raceth4 = case_when(raceth4==1 ~ "Hispanic",
+                              raceth4==2 ~ "Non-Hispanic (NH) Black",
+                              raceth4==3 ~ "Another NH race or unknown",
+                              raceth4==4 ~ "NH White"),
+           raceth4 = factor(raceth4, levels = c("Hispanic", "Non-Hispanic (NH) Black",
+                                              "Another NH race or unknown", "NH White")),
+           knowndeceasedsource = case_when(knowndeceasedsource==1 ~ "Participant exit interview",
+                              knowndeceasedsource==2 ~ "Spouse/partner core interview",
+                              knowndeceasedsource==3 ~ "Field activity date",
+                              knowndeceasedsource==4 ~ "Imputed"),
+           ravetrn = as.numeric(ravetrn))
+  
+  datbl_list[[i]] <- fnlim[[i]] %>% 
+    group_by(hhidpn) %>%
+    mutate(fu_time = max(time_start)) %>%
+    filter(hrswave==min(hrswave)) %>%
+    ungroup() 
+}
+
+names(datbl_list) <- c("Overall", "Childhood financial insecurity", 
+                       "No childhood financial insecurity")
+
+reg.vars<-c("hhidpn", "age_bl", "female", "raceth4", 
+            "sbirth", "child_forced_move")
+
+covars <- c("firstiw", "hrswave_first", "rabyear", "rabcohort", 
+            "meduc_le8", "feduc_le8", "family_financ", "father_unemp", 
+            "first_father_military", "lh4e", "high_childhood_moves_v2", 
+            # "childhood_moves_v2", "child_res_instab", "child_res_instab_v2", "child_res_instab_v3",       
+            "ravetrn", "married_partnered", "raeduc3", "hhincome_pp", 
+            "fairpoor_shlt", "cesd_high", "adl6a_bin", "iadl5a_bin", 
+            "heart", "diab", "hibp", "strok", 
+            "lhms_year", "age_lhms", "age_start_median",
+            "age_end2", "time_surv2", "radage", "fu_time", "eos", 
+            "knowndeceasedsource")
+
+t1.vars <- append(reg.vars, c(covars))
+
+dat_tbl1 <- datbl_list[[1]] %>%
+  select(c(any_of(t1.vars), -hhidpn, -hrswave)) 
+  
+
+labels <- list("firstiw" = "First HRS participation wave",
+               "hrswave_first" = "Baseline 1998+ study wave",
+               "rabcohort" = "Birth cohort",
+               "female" = "Female sex/gender",
+               "childhood_moves_v2" = "Childhood moves (ages 0-16)",
+               "high_childhood_moves_v2" = "High childhood residential mobility (>= 4 moves)",
+               "raeduc3" = "Participant educational attainment",
+               "ravetrn" = "Participant veteran status",
+               "shlt_bin" = "First observed fair/poor self-rated health status",
+               "rabyear" = "Birth year",
+               "age_bl" = "Baseline age (years)",
+               "time_surv2" = "Follow-up time (years)",
+               "age_lhms" = "Age at LHMS survey",
+               "lhms_year" = "LHMS year",
+               "raceth4" = "Race and ethnicity",
+               "sbirth" = "US Southern birth",
+               "lh4e" = "Experienced homelessness before age 50",
+               # "child_res_instab" = "Moved in back-to-back years > once",
+               # "child_res_instab_v2" = "More than 1 move in back-to-back years",
+               # "child_res_instab_v3" = "Multiple moves in 5-year window",
+               "father_unemp" = "Father ever unemployed during childhood",
+               "first_father_military" = "Father military occupation when participant 16 YO",
+               "family_financ" = "Childhood financial well-being",
+               # "child_forced_move" = "Ever forced to move due to financial reasons during childhood",
+               "meduc_le8" = "Mother's education <= 8th grade or missing",
+               "feduc_le8" = "Father's education <= 8th grade or missing",
+               "married_partnered" = "Baseline married/partnered status",
+               "hhincome_pp" = "Baseline household size-adjusted income per person (1000s USD)",
+               "fairpoor_shlt" = "Baseline self-reported fair/poor health",
+               "cesd_high" = "Baseline elevated depressive symptoms",
+               "adl6a_bin" = "Baseline self-reported >= 1 ADL",
+               "iadl5a_bin" = "Baseline self-reported >= 1 IADL",
+               "heart" = "Baseline self-reported heart problem",
+               "diab" = "Baseline self-reported diabetes",
+               "hibp" = "Baseline self-reported high blood pressure",
+               "strok" = "Baseline self-reported stroke or TIA",
+               "fu_time" = "Follow-up time (years)",
+               "eos" = "End of study status",
+               "radage" = "Death age (years)",
+               "knowndeceasedsource" = "Source of death date"
+               )
+
+t1 <- dat_tbl1 %>%
+  tbl_summary(
+        by=child_forced_move,
+        label = c(labels),
+        missing = c("ifany"),
+        # statistic = list(all_continuous() ~ "{median} ({p25}-{p75})",
+        #                  all_categorical() ~ "{n} ({p})") 
+        statistic = list(all_continuous() ~ "{median} ({IQR})",
+                         all_categorical() ~ "{n} ({p})")
+  ) %>%
+  add_overall(last=TRUE)
+
+t1 %>%
+  as_flex_table(include = everything()) %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+
+```{r, include=FALSE}
+# Number of people who changed their anwers!
+table(datbl_list[[1]]$child_forced_move_count, datbl_list[[1]]$child_forced_move_chg, exclude=NULL)
+table(datbl_list[[1]]$family_financ_count, datbl_list[[1]]$family_financ_chg, exclude=NULL)
+table(datbl_list[[1]]$family_financ_count, datbl_list[[1]]$poor_family_financ_chg, exclude=NULL)
+```
+
+\newpage 
+
+### Table eos 
+
+```{r}
+t1 <- dat_tbl1 %>%
+  tbl_summary(
+        by=eos,
+        label = c(labels,
+                  "child_forced_move" ~ "Childhood housing instability"),
+        missing = c("ifany"),
+        # statistic = list(all_continuous() ~ "{median} ({p25}-{p75})",
+        #                  all_categorical() ~ "{n} ({p})") 
+        statistic = list(all_continuous() ~ "{median} ({IQR})",
+                         all_categorical() ~ "{n} ({p})")
+  ) %>%
+  add_overall(last=TRUE)
+
+t1 %>%
+  as_flex_table(include = everything()) %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+
+\newpage
+
+### Baseline age distribution
+
+```{r, fig.height=6, fig.width=12}
+plot_list <- list()
+
+for(i in 1:length(datbl_list)){
+  
+  temp <- datbl_list[[i]]
+  
+  p <-  ggplot(temp, aes(x = age_bl, fill = child_forced_move)) +
+  scale_fill_manual(values = c("Childhood housing instability" = "red3",
+                               "No childhood housing instability" = "#56B4E9")) +
+  geom_density(alpha = 0.4) +
+  theme_bw() +
+  theme(legend.title = element_blank()) +
+  labs(x = "Baseline age (years)",
+       y = "Density") +
+  ggtitle(names(datbl_list)[[i]])
+
+  plot_list[[i]] <- p
+}
+
+# sapply(plot_list, inherits, "ggplot")
+ggarrange(plot_list[[1]], plot_list[[2]], plot_list[[3]], ncol = 3)
+```
+
+## Weight distributions
+
+### IPTWs 
+
+```{r, fig.height=6, fig.width=12}
+plot_list <- list()
+
+for(i in 1:3){
+  
+  p <- datbl_list[[i]] %>% 
+  ggplot(aes(x = all_iptw, fill = child_forced_move)) +
+  scale_fill_manual(values = c("Childhood housing instability" = "red3",
+                               "No childhood housing instability" = "#56B4E9")) +
+  geom_density(alpha = 0.5) +
+  theme_bw() +
+  theme(legend.title = element_blank()) +
+  labs(x = "IPTW",
+       y = "Density") +
+    ggtitle(names(datbl_list[i]))
+
+  plot_list[[i]] <- p
+}
+
+ggarrange(plot_list[[1]], plot_list[[2]], plot_list[[3]], ncol = 2) 
+```
+
+
+```{r, fig.width=20, fig.height=8}
+set.cobalt.options(binary = "std",
+                   continuous = "std")
+plot_list <- lapply(names(datbl_list), function(nm) {
+
+  dat <- datbl_list[[nm]]
+
+  bal <- bal.tab(
+    child_forced_move ~
+      female + raceth4 + feduc_le8 + meduc_le8 + sbirth + factor(rabcohort),
+    data = dat,
+    weights = dat$all_iptw,
+    method = "weighting",
+    un = TRUE,
+    s.d.denom = "pooled"
+  )
+
+  love.plot(
+    bal,
+    stats = "mean.diffs",
+    abs = TRUE,
+    threshold = 0.1,
+    var.order="alphabetical",
+    sample.names = c("Original", "Weighted"),
+    title = paste0(nm, "\n(", nrow(dat), ")"),
+    var.names = c(
+      feduc_le8 = "Low paternal education",
+      meduc_le8 = "Low maternal education",
+      raceth4_Hispanic = "Race and ethnicity - Hispanic",
+      `raceth4_Non-Hispanic (NH) Black` = "Race and ethnicity - NH Black",
+      `raceth4_NH White` = "Race and ethnicity - NH White",
+      `raceth4_Another NH race or unknown` = "Race and ethnicity - Another race or unknown",
+      sbirth = "US Southern birth",
+      female = "Female sex/gender",
+      `factor(rabcohort)_Born 1946-1964` = "Birth year - 1946-1964",
+      `factor(rabcohort)_Born 1892-1927` = "Birth year - born before 1928",
+      `factor(rabcohort)_Born 1965-1973` = "Birth year - 1965-1973",
+      `factor(rabcohort)_Born 1928-1945` = "Birth year - 1928-1945"
+    ) 
+  ) +
+    theme(text = element_text(size = 12)) +
+    scale_x_continuous(limits=c(0,0.25), breaks=seq(0,.25, 0.05))
+})
+
+names(plot_list) <- names(datbl_list)
+ggarrange(plot_list[[1]], plot_list[[2]], plot_list[[3]],
+          ncol = 3)
+```
+
+### Truncated censoring due to loss to follow-up weights
+
+```{r, fig.width=12, fig.height=6}
+plot_list <- list()
+
+for(i in 1:3){
+  
+  p <- fnlim[[i]] %>% 
+  ggplot(aes(x = ipcw_time_trunc, fill = child_forced_move)) +
+  scale_fill_manual(values = c("Childhood housing instability" = "red3",
+                               "No childhood housing instability" = "#56B4E9")) +
+  # scale_x_continuous(limits=c(0,10)) +
+  geom_density(alpha = 0.5) +
+  theme_bw() +
+  theme(legend.title = element_blank()) +
+  labs(x = "Truncated IPCW weight",
+       y = "Density") +
+    ggtitle(names(datbl_list[i]))
+
+  plot_list[[i]] <- p
+}
+
+ggarrange(plot_list[[1]], plot_list[[2]], plot_list[[3]], 
+          # plot_list[[4]], 
+          ncol = 2) 
+```
+
+### Truncated death weights 
+
+```{r, fig.width=10, fig.height=4}
+plot_list <- list()
+
+for(i in 1:3){
+  
+  p <- fnlim[[i]] %>% 
+  ggplot(aes(x = ipdw_time_trunc, fill = child_forced_move)) +
+  scale_fill_manual(values = c("Childhood housing instability" = "red3",
+                               "No childhood housing instability" = "#56B4E9")) +
+  geom_density(alpha = 0.5) +
+  theme_bw() +
+  theme(legend.title = element_blank()) +
+  labs(x = "Truncated IPDW weight",
+       y = "Density") +
+    ggtitle(names(datbl_list[i]))
+
+  plot_list[[i]] <- p
+}
+
+ggarrange(plot_list[[1]], plot_list[[2]], plot_list[[3]], 
+          # plot_list[[4]], 
+          ncol = 2) 
+```
+
+### IPTW*censoring*death weights
+
+```{r, fig.width=10, fig.height=4}
+plot_list <- list()
+
+for(i in 1:3){
+  
+  p <- fnlim[[i]] %>% 
+  ggplot(aes(x = all.weight.time.trunc, fill = child_forced_move)) +
+  scale_fill_manual(values = c("Childhood housing instability" = "red3",
+                               "No childhood housing instability" = "#56B4E9")) +
+  geom_density(alpha = 0.5) +
+  theme_bw() +
+  theme(legend.title = element_blank()) +
+  labs(x = "IPTW*censoring*death truncated weights",
+       y = "Density") +
+    ggtitle(names(datbl_list[i]))
+
+  plot_list[[i]] <- p
+}
+
+ggarrange(plot_list[[1]], plot_list[[2]], plot_list[[3]], 
+          # plot_list[[4]], 
+          ncol = 2) 
+```
+
+## Censoring (LTFU, death) weight evaluations
+
+### weight distributions
+
+```{r}
+wgtdist_list <- list("dat_fnlim_all" = fnlim[[1]],
+                     "dat_fnlim_insec" = fnlim[[2]],
+                     "dat_fnlim_sec" = fnlim[[3]])
+
+for(i in 1:length(wgtdist_list)){
+  wgtdist_list[[i]] <- wgtdist_list[[i]] %>%
+    group_by(hhidpn) %>%
+    mutate(wave = round(hrswave - hrswave_bl, 0)/2) %>%
+    ungroup()
+}
+# table(wgtdist_list[[1]]$wave, exclude=NULL)
+```
+
+#### LTFU truncated weight dists
+
+```{r, fig.height=8, fig.width=8}
+library(ggplot2)
+
+p1 <- ggplot(wgtdist_list[[1]], aes(x = factor(wave), y = ipcw_time_trunc)) +
+  geom_boxplot() +
+  geom_hline(yintercept=1) +
+  scale_y_continuous(breaks=seq(0.8,1.4, .1)) +
+  labs(x = "Study wave", y = "Truncated censoring weight\n(loss to follow-up)",
+       title = "Overall sample") +
+  theme_minimal()
+
+p2 <- ggplot(wgtdist_list[[2]], aes(x = factor(wave), y = ipcw_time_trunc)) +
+  geom_boxplot() +
+  geom_hline(yintercept=1) +
+  scale_y_continuous(breaks=seq(0.8,1.4, .1)) +
+  labs(x = "Study wave", y = "Truncated censoring weight\n(loss to follow-up)",
+       title = "Childhood financial insecurity sample") +
+  theme_minimal()
+
+p3 <- ggplot(wgtdist_list[[3]], aes(x = factor(wave), y = ipcw_time_trunc)) +
+  geom_boxplot() +
+  geom_hline(yintercept=1) +
+  scale_y_continuous(breaks=seq(0.8,1.4, .1)) +
+  labs(x = "Study wave", y = "Truncated censoring weight\n(loss to follow-up)",
+       title = "No childhood financial insecurity sample") +
+  theme_minimal()
+
+ggarrange(p1, p2, p3, ncol=1)
+```
+
+#### death truncated weight dists
+
+```{r, fig.height=8, fig.width=8}
+library(ggplot2)
+
+p1 <- ggplot(wgtdist_list[[1]], aes(x = factor(wave), y = ipdw_time_trunc)) +
+  geom_boxplot() +
+  geom_hline(yintercept=1) +
+  scale_y_continuous(breaks=seq(0.4,2, .2), limits=c(0.4,2)) +
+  labs(x = "Study wave", y = "Truncated censoring weight (death)",
+       title = "Overall sample") +
+  theme_minimal()
+
+p2 <- ggplot(wgtdist_list[[2]], aes(x = factor(wave), y = ipdw_time_trunc)) +
+  geom_boxplot() +
+  geom_hline(yintercept=1) +
+    scale_y_continuous(breaks=seq(0.4,2, .2), limits=c(0.4,2)) +
+  labs(x = "Study wave", y = "Truncated censoring weight (death)",
+       title = "Childhood financial insecurity sample") +
+  theme_minimal()
+
+p3 <- ggplot(wgtdist_list[[3]], aes(x = factor(wave), y = ipdw_time_trunc)) +
+  geom_boxplot() +
+  geom_hline(yintercept=1) +
+    scale_y_continuous(breaks=seq(0.4,2, .2), limits=c(0.4,2)) +
+  labs(x = "Study wave", y = "Truncated censoring weight (death)",
+       title = "No childhood financial insecurity sample") +
+  theme_minimal()
+
+ggarrange(p1, p2, p3, ncol=1)
+```
+
+
+## Missingness tables 
+
+### Baseline sample
+
+```{r}
+preimp <- readRDS(here("Aim_2", "data", "processed", "dat_fnlim_analysis.rds"))
+
+vars <- c("sbirth", "child_forced_move", "family_financ", "rafeduc", "rameduc",
+          "raeduc", "mstat", "shlt", "heart", "diab", "hibp", "strok", 
+          "itot", "hhres", "family_financ", "rabcohort")
+
+t1miss <- preimp %>% group_by(hhidpn) %>%
+  filter(hrswave == min(hrswave)) %>%
+  ungroup() %>%
+  select(all_of(vars))
+
+t1 <- t1miss %>%
+  tbl_summary(by=NULL,
+              label = c(labels),
+              list(all_categorical() ~ "{p}",
+                   all_continuous() ~ "{median} ({IQR})"),
+              digits = list(everything() ~ c(0))) %>%
+  modify_table_styling(
+    columns = label,
+    row = variable == "response",
+    text_format = "indent"
+  )
+
+tbl <- as_flex_table(t1,
+            include = everything()) %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) 
+  # flextable::font(fontname="Times New Roman", part="all") %>% print(preview = "docx")
+tbl
+```
+
+### All obs
+
+```{r}
+preimp <- readRDS(here("Aim_2", "data", "processed", "dat_fnlim_analysis.rds"))
+
+t1miss <- preimp %>% 
+  select(all_of(vars))
+
+t1 <- t1miss %>%
+  tbl_summary(by=NULL,
+              label = c(labels),
+              list(all_categorical() ~ "{p}",
+                   all_continuous() ~ "{median} ({IQR})"),
+              digits = list(everything() ~ c(0))) %>%
+  modify_table_styling(
+    columns = label,
+    row = variable == "response",
+    text_format = "indent"
+  )
+
+tbl <- as_flex_table(t1,
+            include = everything()) %>% autofit() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) 
+  # flextable::font(fontname="Times New Roman", part="all") %>% print(preview = "docx")
+tbl
+```
+
+\newpage
+
+## Main analysis -- time on study
+
+### Across bl age
+
+```{r, fig.width=12, fig.height=8}
+tbl <- contrasts %>%
+  filter(outcome=="fnlim") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="md" & formula=="intx3") %>%
+  filter(time %% 5 == 0)
+
+# "",  "td.weight.time.trunc", 
+wgts = c("all_iptw", "all.weight.time.trunc", "comb.weight.time.trunc")
+
+plot_list <- list()
+
+for(i in 1:length(wgts)){
+  
+  temp <- tbl %>% 
+  filter(weight == wgts[[i]]) 
+  
+  p <- ggplot(temp, aes(x=time, y=estimate)) +
+  geom_point(size=2, alpha=0.7, color = "#51A687") +
+  geom_errorbar(aes(ymin=LL, ymax=UL),
+                  width=.2, linewidth=1,  color = "#51A687",
+                  position=position_dodge(0.05), alpha=.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw(base_size = 16) +
+  facet_nested(age_bl_f ~ sample_f, switch="y") +
+  xlab("Time on study (years)") +
+  ylab("Mean difference (95% CI)") +
+  theme(legend.position = "bottom",
+        legend.justification = "center",
+        strip.placement = "outside",
+        strip.background = element_blank(), 
+        strip.text = element_text(hjust = 0, size=13),
+        axis.title = element_text(size = 15), # Changes "Weight" and "MPG" size
+        axis.text = element_text(size = 12)) +
+  scale_y_continuous(limits = c(-1, 1.5), breaks = seq(-1.5,1.5,by=.5)) + 
+  ggtitle(temp$weight_f[1])
+
+  plot_list[[i]] <- p
+}
+
+plot_list[[1]]
+plot_list[[2]]
+plot_list[[3]]
+```
+
+\newpage
+
+```{r}
+tbl <- contrasts %>%
+  filter(outcome=="fnlim") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="md" & formula=="intx3") %>%
+  filter(time %% 5 == 0)
+
+# "",  "td.weight.time.trunc", 
+wgts = c("all_iptw", "all.weight.time.trunc", "comb.weight.time.trunc")
+
+plot_list <- list()
+
+for(i in 1:length(wgts)){
+  
+  temp <- tbl %>% 
+  filter(weight == wgts[[i]]) 
+  
+   p <- ggplot(temp, aes(x=time, y=estimate, color = sample_f)) +
+  geom_point(size=3, alpha=0.7,
+             position=position_dodge(2.8)) +
+  geom_errorbar(aes(ymin=LL, ymax=UL, color=sample_f),
+                  width=.4, linewidth=1.5,  
+                  position=position_dodge(2.8), alpha=.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw(base_size = 24) +
+  facet_wrap(~ age_bl_f, nrow=3) +
+  xlab("Time on study (years)") +
+  ylab("MD (95% CI)") +
+  scale_color_manual(values = c("#595959", "#009E73", "#F5C710")) +
+  theme(legend.position = "right",
+        legend.justification = "center",
+        strip.placement = "outside",
+        strip.background = element_blank(), 
+        strip.text = element_text(hjust = 0, size=18),
+        axis.title = element_text(size = 18), # Changes "Weight" and "MPG" size
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  guides(
+        color = guide_legend(nrow = 3),
+        fill = guide_legend(nrow = 3)) + 
+  scale_y_continuous(limits = c(-1,1.5), breaks = seq(-2,3,by=.5)) + 
+  scale_x_continuous(limits = c(-1, 26), breaks = seq(0,25,by=5))  
+  # ggtitle(temp$weight_f[1])
+
+  plot_list[[i]] <- p
+}
+```
+
+## Overall only
+
+```{r, fig.width=8, fig.height=16}
+ temp <- tbl %>% 
+  filter(weight == "all.weight.time.trunc" & sample_f=="Overall") 
+
+p <- ggplot(temp, aes(x=time, y=estimate, color = sample_f)) +
+  geom_point(size=3, alpha=0.7,
+             position=position_dodge(2.8)) +
+  geom_errorbar(aes(ymin=LL, ymax=UL, color=sample_f),
+                  width=.4, linewidth=1.5,  
+                  position=position_dodge(2.8), alpha=.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw(base_size = 24) +
+  facet_wrap(~ age_bl_f, nrow=3) +
+  xlab("Time on study (years)") +
+  ylab("MD (95% CI)") +
+  scale_color_manual(values = c("#595959", "#009E73", "#F5C710")) +
+  theme(legend.position = "right",
+        legend.justification = "center",
+        strip.placement = "outside",
+        strip.background = element_blank(), 
+        strip.text = element_text(hjust = 0, size=18),
+        axis.title = element_text(size = 18), # Changes "Weight" and "MPG" size
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  guides(
+        color = guide_legend(nrow = 3),
+        fill = guide_legend(nrow = 3)) + 
+  scale_y_continuous(limits = c(-1,1.5), breaks = seq(-2,3,by=.5)) + 
+  scale_x_continuous(limits = c(-1, 26), breaks = seq(0,25,by=5)) 
+p
+```
+
+
+```{r, fig.width=12, fig.height=16}
+plot_list[[2]]
+```
+
+\newpage
+
+```{r, fig.width=16, fig.height=8}
+tbl <- contrasts %>%
+  filter(outcome=="fnlim") %>%
+  mutate(strat2 = factor(ifelse(str_detect(sample, "all"), "Overall", 
+                         "Childhood financial insecurity-stratified"),
+         levels=c("Overall", "Childhood financial insecurity-stratified"))) %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="md" & formula=="intx3") %>%
+  filter(time %% 5 == 0)
+
+# "",  "td.weight.time.trunc", 
+wgts = c("all_iptw", "all.weight.time.trunc", "comb.weight.time.trunc")
+
+plot_list <- list()
+
+for(i in 1:length(wgts)){
+  
+  temp <- tbl %>% 
+  filter(weight == wgts[[i]]) 
+  
+   p <- ggplot(temp, aes(x=time, y=estimate, color = sample_f)) +
+  geom_point(size=3, alpha=0.7,
+             position=position_dodge(2.5)) +
+  geom_errorbar(aes(ymin=LL, ymax=UL, color=sample_f),
+                  width=.4, linewidth=1.5,  
+                  position=position_dodge(2.5), alpha=.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw(base_size = 24) +
+  facet_grid(strat2 ~ age_bl_f) +
+  xlab("Time on study (years)") +
+  ylab("Mean Difference (95% CI)") +
+  scale_color_manual(values = c("#595959", "#009E73", "#F5C710")) +
+  theme(legend.position = "bottom",
+        legend.justification = "center",
+        strip.placement = "outside",
+        strip.background = element_blank(), 
+        strip.text = element_text(hjust = 0, size=18),
+        strip.text.y = element_blank(),
+        axis.title = element_text(size = 18), # Changes "Weight" and "MPG" size
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  guides(
+        color = guide_legend(nrow = 3),
+        fill = guide_legend(nrow = 3)) + 
+  scale_y_continuous(limits = c(-1,1.5), breaks = seq(-2,3,by=.5)) + 
+  scale_x_continuous(limits = c(-1, 26), breaks = seq(0,25,by=5))  
+  # ggtitle(temp$weight_f[1])
+
+  plot_list[[i]] <- p
+}
+plot_list[[2]]
+```
+
+
+\newpage
+
+#### MD difference tables 
+
+##### IPTW 
+```{r}
+tbl <- contrasts %>%
+  filter(outcome=="fnlim") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="md" & formula=="intx3") %>%
+  filter(time %% 5 == 0 & weight=="all_iptw") %>%
+  mutate(across(c("estimate", "LL", "UL"), ~ round(.x, 2))) %>%
+  mutate(md_clean = paste0(estimate, " (", LL, ", ", UL, ")")) %>%
+  select(c(time, age_bl, sample_f, md_clean)) %>%
+  ungroup() %>%
+  arrange(age_bl, time, sample_f) 
+
+tab2 <- tbl %>%
+  pivot_wider(names_from = c(time),
+                            values_from = md_clean) 
+
+tab2 %>%
+  flextable() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+##### Eliminating LTFU and death
+
+```{r}
+tbl <- contrasts %>%
+  filter(outcome=="fnlim") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="md" & formula=="intx3") %>%
+  filter(time %% 5 == 0 & weight=="all.weight.time.trunc") %>%
+  mutate(across(c("estimate", "LL", "UL"), ~ round(.x, 2))) %>%
+  mutate(md_clean = paste0(estimate, " (", LL, ", ", UL, ")")) %>%
+  select(c(time, age_bl, sample_f, md_clean)) %>%
+  ungroup() %>%
+  arrange(age_bl, time, sample_f) 
+
+tab2 <- tbl %>%
+  pivot_wider(names_from = c(time),
+                            values_from = md_clean) 
+
+tab2 %>%
+  flextable() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+##### Eliminating LTFU and death, combined
+
+```{r}
+tbl <- contrasts %>%
+  filter(outcome=="fnlim") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="md" & formula=="intx3") %>%
+  filter(time %% 5 == 0 & weight=="comb.weight.time.trunc") %>%
+  mutate(across(c("estimate", "LL", "UL"), ~ round(.x, 2))) %>%
+  mutate(md_clean = paste0(estimate, " (", LL, ", ", UL, ")")) %>%
+  select(c(time, age_bl, sample_f, md_clean)) %>%
+  ungroup() %>%
+  arrange(age_bl, time, sample_f) 
+
+tab2 <- tbl %>%
+  pivot_wider(names_from = c(time),
+                            values_from = md_clean) 
+
+tab2 %>%
+  flextable() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+\newpage 
+
+### Trajectories
+
+```{r, fig.width=16, fig.height=12, warning=FALSE}
+tbl <- preds %>%
+  filter(outcome=="fnlim") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="md" & formula=="intx3") 
+
+# "",  "td.weight.time.trunc", 
+wgts = c("all_iptw", "all.weight.time.trunc", "comb.weight.time.trunc")
+
+plot_list <- list()
+
+for(i in 1:length(wgts)){
+  
+  temp <- tbl %>% 
+  filter(weight == wgts[[i]]) 
+  
+  p <- ggplot(temp, aes(x=time, y=emmean, color=as_factor(child_forced_move))) +
+  geom_line(size=1.5, alpha=0.7) +
+  geom_ribbon(aes(ymin=pmax(0,lower.CL), ymax=upper.CL,
+                  fill=as_factor(child_forced_move)),
+                  width=.2, linewidth=0,
+                  position=position_dodge(0.05), alpha=.3) +
+  theme_bw(base_size = 16) +
+  facet_nested(age_bl_f ~ sample_f, switch="y") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  xlab("Time on study (years)") +
+  ylab("Functional impairment score") +
+  scale_fill_manual(values = c("Childhood housing instability" = "red3",
+                               "No childhood housing instability" = "#56B4E9")) +
+  scale_color_manual(values = c("Childhood housing instability" = "red3", 
+                                "No childhood housing instability" = "#56B4E9")) +
+  scale_y_continuous(limits=c(-.2,6.2), breaks=seq(0,6,by=1)) +
+  theme(legend.position = "bottom", 
+        legend.justification = "center",
+        strip.placement = "outside",
+        strip.background = element_blank(), 
+        strip.text = element_text(hjust = 0, size=18),
+        axis.title = element_text(size = 20), # Changes "Weight" and "MPG" size
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  ggtitle(temp$weight_f[1])
+
+  plot_list[[i]] <- p
+}
+# ggarrange(plot_list[[1]], plot_list[[2]], 
+#           # plot_list[[3]], plot_list[[4]], 
+#           ncol = 1)
+```
+
+```{r, fig.height=12, fig.width=16}
+plot_list[[1]]
+```
+
+
+```{r, fig.height=12, fig.width=16}
+plot_list[[2]]
+```
+
+```{r, fig.height=12, fig.width=16}
+plot_list[[3]]
+```
+
+
+\newpage 
+
+## Sensitivity analyses 
+
+### Functional impairment prevalence
+
+#### Ratios 
+
+```{r, fig.width=12, fig.height=8}
+tbl <- contrasts %>%
+  filter(outcome=="fnlim") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="pr" & formula=="intx3") %>%
+  filter(time %% 5 == 0)
+
+# "",  "td.weight.time.trunc", 
+wgts = c("all_iptw", "all.weight.time.trunc", "comb.weight.time.trunc")
+
+plot_list <- list()
+
+for(i in 1:length(wgts)){
+  
+  temp <- tbl %>% 
+  filter(weight == wgts[[i]]) 
+  
+  p <- ggplot(temp, aes(x=time, y=estimate, color = sample_f)) +
+    geom_point(size=3, alpha=0.7,
+               position=position_dodge(2.8)) +
+    geom_errorbar(aes(ymin=LL, ymax=UL, color=sample_f),
+                  width=.4, linewidth=1.5,  
+                  position=position_dodge(2.8), alpha=.7) +
+    geom_hline(yintercept = 1, linetype = "dashed", color = "black") +
+    theme_bw() +
+    facet_wrap(~ age_bl_f, nrow=3) +
+    xlab("Time on study (years)") +
+    ylab("PR (95% CI)") +
+    scale_color_manual(values = c("#595959", "#009E73", "#F5C710")) +
+    theme(legend.position = "right",
+          legend.justification = "center",
+          strip.placement = "outside",
+          strip.background = element_blank(), 
+          strip.text = element_text(hjust = 0, size=18),
+          axis.title = element_text(size = 18), # Changes "Weight" and "MPG" size
+          axis.text = element_text(size = 16),
+          legend.text = element_text(size=16),
+          legend.title = element_blank()) +
+  scale_y_continuous(limits = c(0.6, 3), breaks = seq(1,3.5,by=.5)) + 
+  ggtitle(temp$weight_f[1])
+
+  plot_list[[i]] <- p
+}
+# ggarrange(plot_list[[1]], plot_list[[2]], 
+#           # plot_list[[3]], plot_list[[4]], 
+#           ncol = 1)
+```
+
+```{r, fig.width=8, fig.height=14}
+plot_list[[1]]
+```
+
+```{r, fig.width=12, fig.height=14}
+plot_list[[2]]
+```
+
+```{r, fig.width=8, fig.height=14}
+plot_list[[3]]
+```
+
+\newpage
+
+#### Differences
+
+```{r, fig.width=8}
+tbl <- contrasts %>%
+  filter(outcome=="fnlim") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="pd" & formula=="intx3") %>%
+  filter(time %% 5 == 0)
+
+# "",  "td.weight.time.trunc", 
+wgts = c("all_iptw", "all.weight.time.trunc", "comb.weight.time.trunc")
+
+plot_list <- list()
+
+for(i in 1:length(wgts)){
+  
+  temp <- tbl %>% 
+  filter(weight == wgts[[i]]) 
+  
+ p <- ggplot(temp, aes(x=time, y=estimate, color = sample_f)) +
+    geom_point(size=3, alpha=0.7,
+               position=position_dodge(2.8)) +
+    geom_errorbar(aes(ymin=LL, ymax=UL, color=sample_f),
+                  width=.4, linewidth=1.5,  
+                  position=position_dodge(2.8), alpha=.7) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+    theme_bw() +
+    facet_wrap(~ age_bl_f, nrow=3) +
+    xlab("Time on study (years)") +
+    ylab("PD (95% CI)") +
+    scale_color_manual(values = c("#595959", "#009E73", "#F5C710")) +
+    theme(legend.position = "right",
+          legend.justification = "center",
+          strip.placement = "outside",
+          strip.background = element_blank(), 
+          strip.text = element_text(hjust = 0, size=18),
+          axis.title = element_text(size = 18), # Changes "Weight" and "MPG" size
+          axis.text = element_text(size = 16),
+          legend.text = element_text(size=16),
+          legend.title = element_blank()) +
+  scale_y_continuous(limits = c(-.1, .3)) + 
+  ggtitle(temp$weight_f[1])
+
+  plot_list[[i]] <- p
+}
+# ggarrange(plot_list[[1]], plot_list[[2]], 
+#           # plot_list[[3]], plot_list[[4]], 
+#           ncol = 1)
+```
+
+```{r, fig.width=8, fig.height=14}
+plot_list[[1]]
+```
+
+```{r, fig.width=12, fig.height=14}
+plot_list[[2]]
+```
+
+```{r, fig.width=8, fig.height=14}
+plot_list[[3]]
+```
+
+<!-- ### Main analysis - age as the timescale  -->
+
+<!-- ```{r, fig.width=12, fig.height=4, warning=FALSE} -->
+<!-- tbl <- preds %>%  -->
+<!--   filter(weight %in% c("all_iptw", "all.weight.time.trunc") &  -->
+<!--            sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & -->
+<!--            model=="md" & !is.na(age)) -->
+
+<!-- plot1 <- tbl %>%  -->
+<!--   filter(weight=="all_iptw") %>% -->
+<!--   ggplot(aes(x=age, y=emmean, color=as_factor(child_forced_move))) + -->
+<!--   geom_line(size=1.5, alpha=0.7) + -->
+<!--   geom_ribbon(aes(ymin=pmax(0,lower.CL), ymax=upper.CL, -->
+<!--                   fill=as_factor(child_forced_move)), -->
+<!--                   width=.2, linewidth=0, -->
+<!--                   position=position_dodge(0.05), alpha=.3) + -->
+<!--   theme_bw() + -->
+<!--   facet_wrap(~ sample_f) + -->
+<!--   xlab("Age (years)") + -->
+<!--   ylab("Functional impairment score") + -->
+<!--   scale_fill_manual(values = c("Childhood housing instability" = "red3", -->
+<!--                                "No childhood housing instability" = "#56B4E9")) + -->
+<!--   scale_color_manual(values = c("Childhood housing instability" = "red3",  -->
+<!--                                 "No childhood housing instability" = "#56B4E9")) + -->
+<!--   scale_y_continuous(limits=c(0,6), breaks=seq(0,6,by=1)) + -->
+<!--   ggtitle(tbl$weight_f[1]) + -->
+<!--   theme(legend.title = element_blank()) -->
+
+<!-- temp <- contrasts %>%  -->
+<!--   filter(weight %in% c("all_iptw") &  -->
+<!--            sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & -->
+<!--            model=="md" & !is.na(age)) -->
+
+<!-- plot2 <- ggplot(temp, aes(x=age, y=estimate)) + -->
+<!--   geom_point(size=1.5, alpha=0.7, color = "#51A687") + -->
+<!--   geom_errorbar(aes(ymin=LL, ymax=UL), -->
+<!--                   width=.2, linewidth=1,  color = "#51A687", -->
+<!--                   position=position_dodge(0.05), alpha=.7) + -->
+<!--   geom_hline(yintercept = 0, linetype = "dashed", color = "black") + -->
+<!--   theme_bw() + -->
+<!--   facet_wrap(~ sample_f, nrow=1) + -->
+<!--   xlab("Time on study (years)") + -->
+<!--   ylab("Mean difference (95% CI)") + -->
+<!--   theme(legend.position = "right") + -->
+<!--   # scale_y_continuous(limits = c(-2, 2.5), breaks = seq(-2,2.5,by=.5)) +  -->
+<!--   ggtitle(temp$weight_f[1]) -->
+
+<!-- ggarrange(plot1, plot2, ncol=1) -->
+<!-- ``` -->
+
+\newpage
+
+## ADL secondary analysis
+
+### MD plot
+
+```{r, fig.width=12, fig.height=8}
+tbl <- contrasts %>%
+  filter(outcome=="adl6a") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="md" & formula=="intx3") %>%
+  filter(time %% 5 == 0)
+
+# "",  "td.weight.time.trunc", 
+wgts = c("all_iptw", "all.weight.time.trunc", "comb.weight.time.trunc")
+
+plot_list <- list()
+
+for(i in 1:length(wgts)){
+  
+  temp <- tbl %>% 
+  filter(weight == wgts[[i]]) 
+  
+   p <- ggplot(temp, aes(x=time, y=estimate, color = sample_f)) +
+  geom_point(size=3, alpha=0.7,
+             position=position_dodge(2.8)) +
+  geom_errorbar(aes(ymin=LL, ymax=UL, color=sample_f),
+                  width=.4, linewidth=1.5,  
+                  position=position_dodge(2.8), alpha=.7) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  theme_bw(base_size = 24) +
+  facet_wrap(~ age_bl_f, nrow=3) +
+  xlab("Time on study (years)") +
+  ylab("MD (95% CI)") +
+  scale_color_manual(values = c("#595959", "#009E73", "#F5C710")) +
+  theme(legend.position = "right",
+        legend.justification = "center",
+        strip.placement = "outside",
+        strip.background = element_blank(), 
+        strip.text = element_text(hjust = 0, size=18),
+        axis.title = element_text(size = 18), # Changes "Weight" and "MPG" size
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  guides(
+        color = guide_legend(nrow = 3),
+        fill = guide_legend(nrow = 3)) + 
+  scale_y_continuous(limits = c(-1,1.5), breaks = seq(-2,3,by=.5)) + 
+  scale_x_continuous(limits = c(-1, 26), breaks = seq(0,25,by=5))  
+  # ggtitle(temp$weight_f[1])
+
+  plot_list[[i]] <- p
+}
+```
+
+```{r, fig.width=12, fig.height=16}
+plot_list[[2]]
+```
+
+     
+     
+#### MD table
+
+```{r}
+tbl <- contrasts %>%
+  filter(outcome=="adl6a") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="md" & formula=="intx3") %>%
+  filter(time %% 5 == 0 & weight=="all.weight.time.trunc") %>%
+  mutate(across(c("estimate", "LL", "UL"), ~ round(.x, 2))) %>%
+  mutate(md_clean = paste0(estimate, " (", LL, ", ", UL, ")")) %>%
+  select(c(time, age_bl, sample_f, md_clean)) %>%
+  ungroup() %>%
+  arrange(age_bl, time, sample_f) 
+
+tab2 <- tbl %>%
+  pivot_wider(names_from = c(time),
+                            values_from = md_clean) 
+
+tab2 %>%
+  flextable() %>%
+  set_table_properties(width = 1, layout = "autofit") %>%
+  fontsize(size = 10) %>%
+  flextable::line_spacing(i = 1) %>%
+  flextable::font(fontname="Times New Roman", part="all") 
+```
+
+
+### Trajectories
+
+```{r, fig.width=16, fig.height=12, warning=FALSE}
+tbl <- preds %>%
+  filter(outcome=="adl6a") %>%
+  filter(sample %in% c("dat_fnlim_all", "dat_fnlim_insec", "dat_fnlim_sec") & 
+           model=="md" & formula=="intx3") 
+
+# "",  "td.weight.time.trunc", 
+wgts = c("all_iptw", "all.weight.time.trunc", "comb.weight.time.trunc")
+
+plot_list <- list()
+
+for(i in 1:length(wgts)){
+  
+  temp <- tbl %>% 
+  filter(weight == wgts[[i]]) 
+  
+  p <- ggplot(temp, aes(x=time, y=emmean, color=as_factor(child_forced_move))) +
+  geom_line(size=1.5, alpha=0.7) +
+  geom_ribbon(aes(ymin=pmax(0,lower.CL), ymax=upper.CL,
+                  fill=as_factor(child_forced_move)),
+                  width=.2, linewidth=0,
+                  position=position_dodge(0.05), alpha=.3) +
+  theme_bw(base_size = 16) +
+  facet_nested(age_bl_f ~ sample_f, switch="y") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +
+  xlab("Time on study (years)") +
+  ylab("Functional impairment score") +
+  scale_fill_manual(values = c("Childhood housing instability" = "red3",
+                               "No childhood housing instability" = "#56B4E9")) +
+  scale_color_manual(values = c("Childhood housing instability" = "red3", 
+                                "No childhood housing instability" = "#56B4E9")) +
+  scale_y_continuous(limits=c(-.2,6.2), breaks=seq(0,6,by=1)) +
+  theme(legend.position = "bottom", 
+        legend.justification = "center",
+        strip.placement = "outside",
+        strip.background = element_blank(), 
+        strip.text = element_text(hjust = 0, size=18),
+        axis.title = element_text(size = 20), # Changes "Weight" and "MPG" size
+        axis.text = element_text(size = 16),
+        legend.title = element_blank()) +
+  ggtitle(temp$weight_f[1])
+
+  plot_list[[i]] <- p
+}
+# ggarrange(plot_list[[1]], plot_list[[2]], 
+#           # plot_list[[3]], plot_list[[4]], 
+#           ncol = 1)
+```
+
+```{r, fig.width=16, fig.height=12, warning=FALSE}
+plot_list[[2]]
+```
+
