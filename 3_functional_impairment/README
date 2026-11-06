@@ -1,1 +1,29 @@
+The folder contains code for the childhood housing instability and mid- and late-life functional impairment analysis in HRS. The sample imported in script 01 is derived from the 
+code in the 1_construction folder.
 
+Contents:
+
+01_analytic_sample v3.R
+- This code further restricts the sample to exclude observations missing IADL or ADL scores. 
+- Additionally, this code cleans some covariates before imputing.
+
+02_imputations.R
+- This code runs hot-deck imputations.
+
+03_postimputation_cleaning v2.R
+- This code further cleans imputed data and creates a long dataset with time intervals for weight construction.
+
+04_weights v3.R
+- This script creates sIPTWs and sIPCWs for death and loss to follow-up in the overall and childhood financial insecurity-stratified samples.R
+
+05_GEE_time.R
+- This script runs the main weighted GEE analysis overall and stratified by childhood financial insecurity.
+
+06_KM_analysis_sens_clean.R
+- This script runs the main weighted GEE analysis with ADL scores only as the outcome. 
+
+07_estimate_formatting v2.R
+- This script merges the results from scripts 5-6 and cleans the data for plotting, etc. in the next script. 
+
+00_results v2.Rmd
+- This script creates all of the tables and figures for the main manuscript and supplement.
